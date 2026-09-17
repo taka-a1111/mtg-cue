@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17b -->
+<!-- BUILD_TAG: 2026-09-17c -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.1 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.2 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -69,6 +69,8 @@ input,select,textarea{font-family:inherit}
 .note .say2{font-size:16px;font-weight:500;line-height:1.5;color:#4a4020;margin-bottom:8px;padding-left:12px;border-left:3px solid #d9c96a}
 .note .ask{font-size:14px;color:#3f5b7a;line-height:1.45}
 .note .ask::before{content:"確認：";color:var(--note-dim)}
+.note.soft{background:#efe6c8;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.note.soft .say{font-size:17px;font-weight:500}
 .note .stamp{position:absolute;right:12px;top:10px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
 .note .waiting{font-size:15px;color:var(--note-dim);padding:12px 0}
 .calbox{display:none;margin-top:10px;gap:8px;flex-wrap:wrap}
@@ -219,7 +221,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.1 / BUILD_TAG 2026-09-17b</div>
+  <div class="foot">mtg_cue ver1.2 / BUILD_TAG 2026-09-17c</div>
 </div></div>
 
 <!-- 議事録 -->
@@ -232,7 +234,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17b");
+console.log("BUILD_TAG: 2026-09-17c");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -275,13 +277,34 @@ let t0=0, clockTimer=null, sumTimer=null, cueTimer=null, cueBusy=false, cueDirty
 let entries=[];            // {t, role:'self'|'other', spk, text}
 let selfSpk=null;          // phoneモードの自分の話者番号
 let calChars={},calibrating=false,calDone=false;
-let summaryPts=[], lastCueAt=0;
+let summaryPts=[], lastCueAt=0, lastNote=null, startedAt=null, saveTimer=null;
+/* ---- 自動保存・復元 ---- */
+function saveSession(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{
+  localStorage.setItem("mc_session",JSON.stringify({v:1,startedAt,elapsed:t0?Date.now()-t0:0,mode:cfg.mode,entries,selfSpk,calDone,summaryPts,lastNote,savedAt:Date.now()}));
+}catch(e){}},1500)}
+function clearSession(){try{localStorage.removeItem("mc_session")}catch(_){}}
+function restoreSession(){
+  let d;try{d=JSON.parse(localStorage.getItem("mc_session")||"null")}catch(_){}
+  if(!d||!d.entries||!d.entries.length)return false;
+  entries=d.entries;selfSpk=d.selfSpk??null;calDone=!!d.calDone;summaryPts=d.summaryPts||[];lastNote=d.lastNote||null;startedAt=d.startedAt||null;
+  t0=Date.now()-(d.elapsed||0);
+  renderLog();renderLatest();
+  if(summaryPts.length)$("summary").innerHTML=summaryPts.map(x=>`<li>${esc(x)}</li>`).join("");
+  if(lastNote)showNote(lastNote,true);
+  $("clock").textContent=(()=>{const x=Math.floor((d.elapsed||0)/1000);return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")})();
+  $("btnMin").disabled=entries.length<3;
+  const when=new Date(d.savedAt);
+  setStatus(`前回の内容を復元しました（${when.getHours()}:${String(when.getMinutes()).padStart(2,"0")}保存）。「開始」で続きから再開できます。`,"");
+  return true;
+}
 
 /* ================= 開始・停止 ================= */
 async function start(){
   if(!cfg.dgKey||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
-  entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc");summaryPts=[];lastCueAt=0;cueDirty=false;
-  resetUI();
+  let resume=false;
+  if(entries.length&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
+  if(!resume){entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;startedAt=Date.now();clearSession();resetUI();}
+  else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
       const disp=await navigator.mediaDevices.getDisplayMedia({video:true,audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},systemAudio:"include"});
@@ -297,12 +320,14 @@ async function start(){
       streams.push(mic);conns.push(openDg("mix",mic,true));
     }
   }catch(e){toast("音声を取得できません: "+e.message);cleanupMedia();return}
-  running=true;t0=Date.now();
+  running=true;if(!resume)t0=Date.now();
   $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").disabled=true;
   clockTimer=setInterval(tick,1000);
   sumTimer=setInterval(refreshSummary,cfg.interval*1000);
-  setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"自分の声を登録してください。","live");
-  if(cfg.mode!=="pc"){$("calbox").classList.add("on");$("noteWait").style.display="none"}
+  if(resume&&calDone)setStatus("続きから聞き取り中","live");
+  else{setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"自分の声を登録してください。","live");
+    if(cfg.mode!=="pc"){$("calbox").classList.add("on");$("noteWait").style.display="none"}}
+  saveSession();
   try{wakeLock=await navigator.wakeLock?.request("screen")}catch(_){}
 }
 function stop(){
@@ -311,7 +336,7 @@ function stop(){
   clearInterval(clockTimer);clearInterval(sumTimer);clearTimeout(cueTimer);wakeLock?.release?.();
   $("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
   $("btnMin").disabled=entries.length<3;
-  setStatus("停止しました。書き起こしは画面に残ります。議事録も作れます。","");
+  setStatus("停止しました。書き起こしは画面に残ります（再読み込みしても残ります）。","");saveSession();
 }
 function cleanupMedia(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[]}
 $("btnGo").onclick=()=>running?stop():start();
@@ -320,7 +345,7 @@ function resetUI(){
   $("latest").innerHTML='<span class="empty">まだ発言はありません</span>';
   $("summary").innerHTML='<li class="empty">会話が進むと自動で更新されます</li>';
   $("alertCard").style.display="none";$("deepCard").style.display="none";
-  $("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
+  $("note").classList.remove("soft");$("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
   const h=cfg.mode==="pc"?"薄い行は自分の発言。":"薄い行は自分の発言（AIには「自分」として渡します）。行を長押し（PCは右クリック）で「これは自分の声」に切り替えられます。";
   $("hintM").textContent=h;$("hintP").textContent=h;
 }
@@ -334,30 +359,46 @@ function openDg(role,stream,diarize){
   const [model,lang]=cfg.dgModel.split("|");
   const url=`wss://api.deepgram.com/v1/listen?model=${model}&language=${lang}&diarize=${diarize}&smart_format=true&interim_results=true&endpointing=400&encoding=linear16&sample_rate=16000&channels=1`;
   const kt=(model==="nova-3"&&cfg.keyterms)?cfg.keyterms.split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).slice(0,100).map(x=>"&keyterm="+encodeURIComponent(x)).join(""):"";
-  const ws=new WebSocket(url+kt,["token",cfg.dgKey]);
-  let audioCtx,proc,ka;
-  ws.onopen=()=>{
-    audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-    const src=audioCtx.createMediaStreamSource(stream);
-    proc=audioCtx.createScriptProcessor(4096,1,1);
-    const ratio=audioCtx.sampleRate/16000;
-    proc.onaudioprocess=ev=>{
-      if(ws.readyState!==1)return;
-      const inp=ev.inputBuffer.getChannelData(0);
-      const n=Math.floor(inp.length/ratio),out=new Int16Array(n);
-      for(let i=0;i<n;i++){const a=Math.floor(i*ratio),b=Math.min(inp.length,Math.floor((i+1)*ratio));let s=0;for(let j=a;j<b;j++)s+=inp[j];const v=s/Math.max(1,b-a);out[i]=Math.max(-1,Math.min(1,v))*32767;}
-      ws.send(out.buffer);
-    };
-    src.connect(proc);
-    const sink=audioCtx.createGain();sink.gain.value=0;proc.connect(sink);sink.connect(audioCtx.destination);
-    ka=setInterval(()=>{if(ws.readyState===1)ws.send(JSON.stringify({type:"KeepAlive"}))},8000);
+  // 音声処理は1回だけ作り、WebSocketだけ張り直せるようにする
+  const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const src=audioCtx.createMediaStreamSource(stream);
+  const proc=audioCtx.createScriptProcessor(4096,1,1);
+  const ratio=audioCtx.sampleRate/16000;
+  let ws=null,ka=null,closed=false,retry=0,retryTimer=null;
+  proc.onaudioprocess=ev=>{
+    if(!ws||ws.readyState!==1)return;
+    const inp=ev.inputBuffer.getChannelData(0);
+    const n=Math.floor(inp.length/ratio),out=new Int16Array(n);
+    for(let i=0;i<n;i++){const a=Math.floor(i*ratio),b=Math.min(inp.length,Math.floor((i+1)*ratio));let s=0;for(let j=a;j<b;j++)s+=inp[j];const v=s/Math.max(1,b-a);out[i]=Math.max(-1,Math.min(1,v))*32767;}
+    ws.send(out.buffer);
   };
-  ws.onmessage=e=>onDg(role,JSON.parse(e.data));
-  ws.onerror=()=>toast("Deepgramに接続できません。キーとモデルを確認してください。");
-  ws.onclose=()=>{clearInterval(ka);if(running&&role!=="self"){toast("文字起こしの接続が切れました");stop()}};
-  return {close(){clearInterval(ka);try{ws.readyState===1&&ws.send(JSON.stringify({type:"CloseStream"}))}catch(_){}
-    try{ws.close()}catch(_){}try{proc&&proc.disconnect();audioCtx&&audioCtx.close()}catch(_){}}};
+  src.connect(proc);
+  const sink=audioCtx.createGain();sink.gain.value=0;proc.connect(sink);sink.connect(audioCtx.destination);
+  function connect(){
+    ws=new WebSocket(url+kt,["token",cfg.dgKey]);
+    ws.onopen=()=>{
+      if(retry>0){toast("再接続しました");if(running)setStatus("聞き取り中（再接続済み）","live")}
+      retry=0;
+      ka=setInterval(()=>{if(ws.readyState===1)ws.send(JSON.stringify({type:"KeepAlive"}))},8000);
+    };
+    ws.onmessage=e=>{try{onDg(role,JSON.parse(e.data))}catch(_){}};
+    ws.onerror=()=>{};
+    ws.onclose=ev=>{
+      clearInterval(ka);
+      if(closed||!running)return;
+      if(ev.code===1008||ev.code===4001){toast("Deepgramに接続できません。キーとモデルを確認してください。");stop();return}
+      if(retry>=10){toast("文字起こしの再接続に失敗しました。停止します。");stop();return}
+      retry++;const wait=Math.min(15000,1000*Math.pow(2,retry-1));
+      if(role!=="self")setStatus(`接続が切れました。再接続中（${retry}回目）…音声は取り続けています`,"cal");
+      retryTimer=setTimeout(connect,wait);
+    };
+  }
+  connect();
+  return {close(){closed=true;clearTimeout(retryTimer);clearInterval(ka);try{ws&&ws.readyState===1&&ws.send(JSON.stringify({type:"CloseStream"}))}catch(_){}
+    try{ws&&ws.close()}catch(_){}try{proc.disconnect();audioCtx.close()}catch(_){}}};
 }
+window.addEventListener("online",()=>{if(running)toast("ネットワークが復帰しました")});
+window.addEventListener("offline",()=>{if(running)toast("ネットワークが切れました。復帰後に自動で再接続します")});
 function onDg(role,m){
   if(m.type!=="Results")return;
   const alt=m.channel?.alternatives?.[0];if(!alt||!alt.transcript)return;
@@ -374,7 +415,7 @@ function onDg(role,m){
     if(role==="mix"&&calibrating)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
     if(r==="other")gotOther=true;
   }
-  removeInterim();renderLog();renderLatest();
+  removeInterim();renderLog();renderLatest();saveSession();
   if(gotOther&&calDone)scheduleCue();
 }
 function finishCalibration(){
@@ -383,7 +424,7 @@ function finishCalibration(){
   selfSpk=+ks.sort((a,b)=>calChars[b]-calChars[a])[0];calibrating=false;calDone=true;
   entries.forEach(e=>{e.role=e.spk===selfSpk?"self":"other"});
   $("calbox").classList.remove("on");$("noteWait").style.display="";
-  setStatus(`聞き取り中。自分＝話者${selfSpk} として除外します。`,"live");renderLog();renderLatest();
+  setStatus(`聞き取り中。自分＝話者${selfSpk} として除外します。`,"live");renderLog();renderLatest();saveSession();
 }
 $("btnCal").onclick=()=>{
   if(!calibrating){calibrating=true;calChars={};$("btnCal").textContent="登録完了";$("btnCal").classList.add("rec");$("calMsg").textContent="登録中。普通の声で話してください（5〜10秒）。話し終えたら「登録完了」。";}
@@ -418,11 +459,11 @@ function renderLatest(){
   $("latest").innerHTML=(last.length>1?`<span class="old">${esc(last[0].text)}</span>`:"")+esc(last[last.length-1].text);
 }
 function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
-function showNote(r){
-  $("noteWait").style.display="none";
+function showNote(r,restoring){
+  lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
   const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
   set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
-  $("noteStamp").textContent=$("clock").textContent;
+  if(!restoring)r.stamp=$("clock").textContent;$("noteStamp").textContent=r.stamp||"";
   if(r.flag){$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(navigator.vibrate)navigator.vibrate(120)}
   else $("alertCard").style.display="none";
 }
@@ -449,11 +490,12 @@ async function runCue(){
     const txt=await claude(cfg.mFast,
 `あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。
 相手の直近の発言に対して、今この瞬間に自分が言うべきことを、必ずJSONのみで返してください。形式:
-{"intent":"相手が本当に言いたいこと・求めていることを1行（30文字以内）",
+{"needs_reply":true/false（相手が自分に質問・依頼・相談・判断を求めている＝true。説明や独白の途中、雑談＝false）,
+ "intent":"相手が本当に言いたいこと・求めていることを1行（30文字以内）",
  "say":["自分がそのまま口に出せる第一声（45文字以内）","別の切り返しか補足の一言（45文字以内）"],
  "ask":"相手に確認すべき一言。不要ならnull",
  "flag":"前提メモの警戒事項に触れている・即決してはいけない場合の注意1行。なければnull"}
-・相手が雑談や相槌だけなら say は短い相槌レベルでよい
+・needs_replyがfalseのときは say は相槌か短い受け止め1つだけでよい（2つ目は空でよい）
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
 ・会話に出ていない事実を作らない`,
 `【前提メモ】\n${cfg.memo}\n\n【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,400);
@@ -490,12 +532,19 @@ $("btnMin").onclick=async()=>{
   if(deepBusy)return;deepBusy=true;setStatus("議事録を作成中…","think");
   try{
     const txt=await claude(cfg.mSmart,
-`会議の書き起こしから日本語の議事録を作ります。見出しは「日時・参加者」「決まったこと」「相手の要望・条件」「自分の回答・保留にしたこと」「次のアクション（誰が・いつまでに）」「未確認事項」。箇条書き中心、太字記号（**）は使わない。事実と推測を混ぜない。`,
+`会議の書き起こしから、そのまま人に送れる自然な日本語の議事録を作ります。
+・マークダウン記号（#、*、-、|、**など）は一切使わない。見出しは「■ 決まったこと」のように■だけを付けた1行にし、箇条書きは「・」を使う
+・項目は「概要」「決まったこと」「相手からの要望・条件」「自分の回答・保留にしたこと」「次のアクション（誰が・いつまでに）」「確認が必要なこと」の順。該当する内容がない項目は見出しごと省く。「記載なし」「確認できず」のような空欄の説明は書かない
+・冒頭に日付・参加者を1〜2行で書く（前提メモに相手の名前があればそれを使う。日付は${new Date().toLocaleDateString("ja-JP")}）
+・書き起こしの誤変換は文脈と前提メモから正しい語に直す。事実と推測を混ぜず、推測は「〜と思われる」と書く
+・全体で600〜1000字程度`,
 `【前提メモ】\n${cfg.memo}\n\n【会話（全文）】\n${entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}`,1800);
     $("minText").value=txt.trim();$("minSheet").classList.add("open");
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus("停止中","");
 };
+
+restoreSession();
 
 /* ================= PWA ================= */
 (()=>{const man={name:"会議カンペ",short_name:"カンペ",start_url:location.pathname,display:"standalone",background_color:"#1b2028",theme_color:"#1b2028",icons:[]};
