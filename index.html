@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<!-- BUILD_TAG: 2026-09-17a -->
+<!-- SITE-ID: mtg-cue -->
+<!-- mtg_cue ver1.0 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1b2028">
+<title>会議カンペ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1b2028; --panel:#252c37; --panel2:#2e3744; --line:#3a4453;
+  --text:#edf0f3; --muted:#98a4b3; --self:#7d8b9b;
+  --note:#fff3b0; --note-ink:#2a2410; --note-dim:#8a7a3a;
+  --ok:#7fd0a3; --warn:#f5b642; --danger:#ef7d7d; --accent:#8fb8ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic","游ゴシック","Meiryo","メイリオ",sans-serif;
+  -webkit-font-smoothing:antialiased;font-size:15px;line-height:1.55}
+body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+button{font-family:inherit;border:0;border-radius:12px;cursor:pointer;color:var(--text);background:var(--panel2);font-size:15px}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+input,select,textarea{font-family:inherit}
+
+.top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex:none}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted);flex:none}
+.dot.live{background:var(--danger)}
+.dot.cal{background:var(--warn)}
+.dot.think{background:var(--accent)}
+@media (prefers-reduced-motion:no-preference){.dot.live{animation:pulse 1.4s infinite}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(239,125,125,.45)}70%{box-shadow:0 0 0 9px rgba(239,125,125,0)}100%{box-shadow:0 0 0 0 rgba(239,125,125,0)}}
+.top .st{font-size:13px;color:var(--muted);flex:1;line-height:1.35}
+.top .time{font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
+.gear{background:transparent;font-size:22px;padding:2px 6px;color:var(--muted)}
+
+.wrap{flex:1;min-height:0;display:flex;flex-direction:column}
+.col{overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.col.left{padding-bottom:110px}
+.col.right{display:none}
+@media (min-width:900px){
+  .wrap{flex-direction:row}
+  .col{flex:1;padding-bottom:110px}
+  .col.left{flex:1.15}
+  .col.right{display:flex;border-left:1px solid var(--line)}
+  .mobile-only{display:none}
+}
+
+.card{background:var(--panel);border-radius:14px;padding:12px 14px}
+.card h2{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px}
+.card.alert{background:#3b3120;border-left:4px solid var(--warn)}
+.card.alert h2{color:var(--warn)}
+.card.deep{border-left:4px solid var(--ok)}
+.card.deep h2{color:var(--ok)}
+.empty{color:var(--muted);font-size:14px}
+
+/* カンペ本体 */
+.note{background:var(--note);color:var(--note-ink);border-radius:6px 6px 14px 6px;padding:14px 16px 12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.35);position:relative;min-height:120px}
+.note::before{content:"";position:absolute;left:14px;right:14px;top:-6px;height:12px;background:rgba(0,0,0,.08);border-radius:2px}
+.note .intent{font-size:14px;color:var(--note-dim);margin-bottom:8px;line-height:1.45}
+.note .say{font-size:21px;font-weight:700;line-height:1.5;margin-bottom:8px}
+.note .say2{font-size:16px;font-weight:500;line-height:1.5;color:#4a4020;margin-bottom:8px;padding-left:12px;border-left:3px solid #d9c96a}
+.note .ask{font-size:14px;color:#3f5b7a;line-height:1.45}
+.note .ask::before{content:"確認：";color:var(--note-dim)}
+.note .stamp{position:absolute;right:12px;top:10px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
+.note .waiting{font-size:15px;color:var(--note-dim);padding:12px 0}
+
+.latest{font-size:18px;line-height:1.5;font-weight:500;min-height:2.6em}
+.latest .old{display:block;color:var(--muted);font-weight:400;font-size:14px;margin-bottom:4px}
+
+ul.pts{list-style:none;display:flex;flex-direction:column;gap:6px}
+ul.pts li{font-size:15px;line-height:1.5;padding-left:14px;position:relative}
+ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.card.deep ul.pts li::before{background:var(--ok)}
+.card.alert ul.pts li::before{background:var(--warn)}
+
+.log{display:flex;flex-direction:column;gap:4px}
+.log .line{font-size:14px;line-height:1.5;padding:6px 10px;border-radius:10px;background:var(--panel2)}
+.log .line.me{background:transparent;color:var(--self);font-size:13px}
+.log .line .who{font-size:11px;color:var(--muted);margin-right:6px}
+.log .line.interim{opacity:.5}
+.hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+
+.bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(to top,var(--bg) 70%,transparent);z-index:5}
+.bar button{flex:1;padding:15px 8px;font-size:16px;font-weight:700}
+.bar .go{background:#2f6f4f}
+.bar .go.stop{background:#7a3d3d}
+.bar .deepbtn{background:#2c4e7d}
+.bar .minbtn{background:#4a4360;flex:.7}
+
+/* 設定・議事録シート */
+.sheet{position:fixed;inset:0;background:var(--bg);overflow-y:auto;padding:16px 14px 40px;display:none;z-index:10}
+.sheet.open{display:block}
+.sheet .in{max-width:760px;margin:0 auto}
+.sheet h1{font-size:18px;font-weight:700;margin-bottom:14px}
+.f{margin-bottom:14px}
+.f label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.f input,.f textarea,.f select{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);
+  border-radius:10px;padding:10px;font-size:15px}
+.f textarea{min-height:130px;line-height:1.55}
+.f small{display:block;color:var(--muted);font-size:12px;margin-top:4px;line-height:1.5}
+.row{display:flex;gap:10px}
+.row .f{flex:1}
+.seg{display:flex;gap:6px}
+.seg button{flex:1;padding:12px 8px;border:1px solid var(--line);background:var(--panel)}
+.seg button.on{background:#2c4e7d;border-color:#2c4e7d}
+.sheet .btns{display:flex;gap:10px;margin-top:8px}
+.sheet .btns button{flex:1;padding:14px;font-size:16px;font-weight:700}
+.sheet .btns .save{background:#2f6f4f}
+.foot{font-size:11px;color:var(--muted);margin-top:24px;text-align:center}
+.toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#000c;color:#fff;
+  padding:10px 16px;border-radius:10px;font-size:14px;display:none;z-index:20;max-width:90%}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="dot" id="dot"></div>
+  <div class="st" id="status">停止中。右下の開始で聞き取りを始めます。</div>
+  <div class="time" id="clock">00:00</div>
+  <button class="gear" id="btnGear" aria-label="設定">⚙</button>
+</div>
+
+<div class="wrap">
+  <div class="col left">
+
+    <div class="note" id="note">
+      <span class="stamp" id="noteStamp"></span>
+      <div class="waiting" id="noteWait">相手が話し始めると、ここにカンペが出ます。</div>
+      <div class="intent" id="nIntent" style="display:none"></div>
+      <div class="say" id="nSay" style="display:none"></div>
+      <div class="say2" id="nSay2" style="display:none"></div>
+      <div class="ask" id="nAsk" style="display:none"></div>
+    </div>
+
+    <div class="card alert" id="alertCard" style="display:none">
+      <h2>注意</h2>
+      <ul class="pts" id="alerts"></ul>
+    </div>
+
+    <div class="card deep" id="deepCard" style="display:none">
+      <h2>深掘り回答案</h2>
+      <ul class="pts" id="deep"></ul>
+    </div>
+
+    <div class="card">
+      <h2>相手の最新の発言</h2>
+      <div class="latest" id="latest"><span class="empty">まだ発言はありません</span></div>
+    </div>
+
+    <div class="card">
+      <h2>ここまでの要点</h2>
+      <ul class="pts" id="summary"><li class="empty">会話が進むと自動で更新されます</li></ul>
+    </div>
+
+    <div class="card mobile-only">
+      <h2>書き起こし</h2>
+      <div class="log" id="logM"></div>
+      <div class="hint" id="hintM"></div>
+    </div>
+  </div>
+
+  <div class="col right">
+    <div class="card" style="flex:1">
+      <h2>書き起こし</h2>
+      <div class="log" id="logP"></div>
+      <div class="hint" id="hintP"></div>
+    </div>
+  </div>
+</div>
+
+<div class="bar">
+  <button class="go" id="btnGo">開始</button>
+  <button class="deepbtn" id="btnDeep" disabled>深掘り</button>
+  <button class="minbtn" id="btnMin" disabled>議事録</button>
+</div>
+
+<!-- 設定 -->
+<div class="sheet" id="sheet"><div class="in">
+  <h1>設定</h1>
+  <div class="f"><label>音声の取り方</label>
+    <div class="seg" id="modeSeg">
+      <button data-v="phone">スマホ：マイクで拾う</button>
+      <button data-v="pc">PC：タブ音声＋マイク</button>
+    </div>
+    <small id="modeHint"></small></div>
+  <div class="f"><label>Deepgram APIキー</label><input id="dgKey" type="password" autocomplete="off"></div>
+  <div class="f"><label>Anthropic APIキー</label><input id="aKey" type="password" autocomplete="off">
+    <small>キーはこの端末のブラウザ内にだけ保存されます。共用端末では使わないでください。</small></div>
+  <div class="row">
+    <div class="f"><label>文字起こしモデル</label>
+      <select id="dgModel"><option value="nova-3|multi">nova-3 / multi</option><option value="nova-2|ja">nova-2 / ja</option></select>
+      <small>日本語が崩れるときは nova-2 / ja に切り替え</small></div>
+    <div class="f"><label>声の登録時間（秒）※スマホ時</label><input id="calSec" type="number" value="15" min="5" max="60"></div>
+  </div>
+  <div class="row">
+    <div class="f"><label>カンペを出す間（相手が黙ってから秒）</label><input id="pause" type="number" value="2" min="1" max="6" step="0.5"></div>
+    <div class="f"><label>要点の更新間隔（秒）</label><input id="interval" type="number" value="60" min="20" max="180"></div>
+  </div>
+  <div class="row">
+    <div class="f"><label>カンペ・要点モデル（速い）</label><input id="mFast" value="claude-haiku-4-5-20251001"></div>
+    <div class="f"><label>深掘り・議事録モデル（賢い）</label><input id="mSmart" value="claude-sonnet-5"></div>
+  </div>
+  <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
+    <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
+  <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
+  <div class="foot">mtg_cue ver1.0 / BUILD_TAG 2026-09-17a</div>
+</div></div>
+
+<!-- 議事録 -->
+<div class="sheet" id="minSheet"><div class="in">
+  <h1>議事録</h1>
+  <div class="f"><textarea id="minText" style="min-height:60vh"></textarea></div>
+  <div class="btns"><button id="btnMinClose">閉じる</button><button class="save" id="btnMinCopy">コピー</button></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+console.log("BUILD_TAG: 2026-09-17a");
+/* ================= 設定 ================= */
+const DEFAULT_MEMO =
+`相手：（会社名・担当者名・立場）
+目的：（例：契約前の条件すり合わせ／要件ヒアリング／進捗報告）
+自分の希望条件：（例：時給○○円、週○時間、平日9〜18時、クラウドワークス規約内で契約、仮払い後に着手）
+確認したいこと：（例：予算、納期、決裁者、既存サイトの状況）
+警戒すること：（例：条件の切り下げ、直接契約への誘導、規約・法令違反につながる依頼、その場での即決）
+話し方：丁寧だが簡潔に。即答できないことは「持ち帰って整理して返信する」と言う。`;
+
+const $=id=>document.getElementById(id);
+const S={
+  load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
+    $("dgKey").value=s.dgKey||""; $("aKey").value=s.aKey||""; $("dgModel").value=s.dgModel||"nova-3|multi";
+    $("calSec").value=s.calSec||15; $("pause").value=s.pause||2; $("interval").value=s.interval||60;
+    $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
+    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode};},
+  save(){const s={mode:curMode,dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
+    calSec:+$("calSec").value||15,pause:+$("pause").value||2,interval:+$("interval").value||60,
+    mFast:$("mFast").value.trim(),mSmart:$("mSmart").value.trim(),memo:$("memo").value};
+    localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
+};
+let curMode="phone";
+function hasDisplayAudio(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia)&&!/Android|iPhone|iPad/i.test(navigator.userAgent)}
+function setMode(m){curMode=m;[...$("modeSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===m));
+  $("modeHint").textContent=m==="pc"
+   ?"開始時に「共有するタブ／画面」を選び、「音声を共有」にチェック。タブ音声＝相手、マイク＝自分として完全に分けます。Zoomはブラウザ版をタブで開くか、Windowsなら画面全体＋システム音声を選択。"
+   :"PCの横にスマホを置いてマイクで拾います。開始後の最初の数秒は自分が話して、自分の声を登録してください（その声は除外します）。";}
+$("modeSeg").onclick=e=>{const b=e.target.closest("button");if(b)setMode(b.dataset.v)};
+let cfg=S.load();
+$("btnGear").onclick=()=>$("sheet").classList.add("open");
+$("btnClose").onclick=()=>{S.load();$("sheet").classList.remove("open")};
+$("btnSave").onclick=()=>{cfg=S.save();$("sheet").classList.remove("open");toast("保存しました")};
+$("btnMinClose").onclick=()=>$("minSheet").classList.remove("open");
+$("btnMinCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("minText").value);toast("コピーしました")}catch(_){$("minText").select();document.execCommand("copy");toast("コピーしました")}};
+function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(t._x);t._x=setTimeout(()=>t.style.display="none",3000)}
+
+/* ================= 状態 ================= */
+let running=false, conns=[], streams=[], wakeLock=null;
+let t0=0, clockTimer=null, sumTimer=null, cueTimer=null, cueBusy=false, cueDirty=false, deepBusy=false;
+let entries=[];            // {t, role:'self'|'other', spk, text}
+let selfSpk=null;          // phoneモードの自分の話者番号
+let calChars={};
+let summaryPts=[], lastCueAt=0;
+
+/* ================= 開始・停止 ================= */
+async function start(){
+  if(!cfg.dgKey||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
+  entries=[];selfSpk=null;calChars={};summaryPts=[];lastCueAt=0;cueDirty=false;
+  resetUI();
+  try{
+    if(cfg.mode==="pc"){
+      const disp=await navigator.mediaDevices.getDisplayMedia({video:true,audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},systemAudio:"include"});
+      if(!disp.getAudioTracks().length){disp.getTracks().forEach(t=>t.stop());toast("音声が共有されていません。「音声を共有」にチェックして選び直してください。");return}
+      streams.push(disp);
+      disp.getVideoTracks()[0].onended=()=>{if(running)stop()};
+      conns.push(openDg("other",new MediaStream(disp.getAudioTracks()),true));
+      try{const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+        streams.push(mic);conns.push(openDg("self",mic,false));}
+      catch(e){toast("マイクなしで続行します（自分の発言は記録されません）")}
+    }else{
+      const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true}});
+      streams.push(mic);conns.push(openDg("mix",mic,true));
+    }
+  }catch(e){toast("音声を取得できません: "+e.message);cleanupMedia();return}
+  running=true;t0=Date.now();
+  $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").disabled=true;
+  clockTimer=setInterval(tick,1000);
+  sumTimer=setInterval(refreshSummary,cfg.interval*1000);
+  setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"声の登録中。まず自分が数秒話してください。",cfg.mode==="pc"?"live":"cal");
+  try{wakeLock=await navigator.wakeLock?.request("screen")}catch(_){}
+}
+function stop(){
+  running=false;
+  conns.forEach(c=>c.close());conns=[];cleanupMedia();
+  clearInterval(clockTimer);clearInterval(sumTimer);clearTimeout(cueTimer);wakeLock?.release?.();
+  $("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
+  $("btnMin").disabled=entries.length<3;
+  setStatus("停止しました。書き起こしは画面に残ります。議事録も作れます。","");
+}
+function cleanupMedia(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[]}
+$("btnGo").onclick=()=>running?stop():start();
+function resetUI(){
+  ["logM","logP"].forEach(i=>$(i).innerHTML="");
+  $("latest").innerHTML='<span class="empty">まだ発言はありません</span>';
+  $("summary").innerHTML='<li class="empty">会話が進むと自動で更新されます</li>';
+  $("alertCard").style.display="none";$("deepCard").style.display="none";
+  $("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
+  const h=cfg.mode==="pc"?"薄い行は自分の発言。":"薄い行は自分の発言（AIには「自分」として渡します）。行を長押し（PCは右クリック）で「これは自分の声」に切り替えられます。";
+  $("hintM").textContent=h;$("hintP").textContent=h;
+}
+function setStatus(msg,mode){$("status").textContent=msg;$("dot").className="dot"+(mode?" "+mode:"")}
+function tick(){const s=Math.floor((Date.now()-t0)/1000);
+  $("clock").textContent=String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+  if(cfg.mode!=="pc"&&selfSpk===null&&s>=cfg.calSec)finishCalibration();}
+
+/* ================= Deepgram 接続 ================= */
+function openDg(role,stream,diarize){
+  const [model,lang]=cfg.dgModel.split("|");
+  const url=`wss://api.deepgram.com/v1/listen?model=${model}&language=${lang}&diarize=${diarize}&smart_format=true&interim_results=true&endpointing=400&encoding=linear16&sample_rate=16000&channels=1`;
+  const ws=new WebSocket(url,["token",cfg.dgKey]);
+  let audioCtx,proc,ka;
+  ws.onopen=()=>{
+    audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const src=audioCtx.createMediaStreamSource(stream);
+    proc=audioCtx.createScriptProcessor(4096,1,1);
+    const ratio=audioCtx.sampleRate/16000;
+    proc.onaudioprocess=ev=>{
+      if(ws.readyState!==1)return;
+      const inp=ev.inputBuffer.getChannelData(0);
+      const n=Math.floor(inp.length/ratio),out=new Int16Array(n);
+      for(let i=0;i<n;i++){const a=Math.floor(i*ratio),b=Math.min(inp.length,Math.floor((i+1)*ratio));let s=0;for(let j=a;j<b;j++)s+=inp[j];const v=s/Math.max(1,b-a);out[i]=Math.max(-1,Math.min(1,v))*32767;}
+      ws.send(out.buffer);
+    };
+    src.connect(proc);
+    const sink=audioCtx.createGain();sink.gain.value=0;proc.connect(sink);sink.connect(audioCtx.destination);
+    ka=setInterval(()=>{if(ws.readyState===1)ws.send(JSON.stringify({type:"KeepAlive"}))},8000);
+  };
+  ws.onmessage=e=>onDg(role,JSON.parse(e.data));
+  ws.onerror=()=>toast("Deepgramに接続できません。キーとモデルを確認してください。");
+  ws.onclose=()=>{clearInterval(ka);if(running&&role!=="self"){toast("文字起こしの接続が切れました");stop()}};
+  return {close(){clearInterval(ka);try{ws.readyState===1&&ws.send(JSON.stringify({type:"CloseStream"}))}catch(_){}
+    try{ws.close()}catch(_){}try{proc&&proc.disconnect();audioCtx&&audioCtx.close()}catch(_){}}};
+}
+function onDg(role,m){
+  if(m.type!=="Results")return;
+  const alt=m.channel?.alternatives?.[0];if(!alt||!alt.transcript)return;
+  if(!m.is_final){if(role!=="self")showInterim(alt.transcript);return}
+  const groups=[];
+  for(const w of alt.words||[]){const spk=w.speaker??0,g=groups[groups.length-1],tok=w.punctuated_word||w.word;
+    if(g&&g.spk===spk)g.words.push(tok);else groups.push({spk,words:[tok]});}
+  if(!groups.length)groups.push({spk:0,words:[alt.transcript]});
+  const t=(Date.now()-t0)/1000;let gotOther=false;
+  for(const g of groups){
+    const text=g.words.join("").trim();if(!text)continue;
+    const r=role==="mix"?(selfSpk!==null&&g.spk===selfSpk?"self":"other"):role;
+    entries.push({t,role:r,spk:g.spk,text});
+    if(role==="mix"&&selfSpk===null)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
+    if(r==="other")gotOther=true;
+  }
+  removeInterim();renderLog();renderLatest();
+  if(gotOther&&(cfg.mode==="pc"||selfSpk!==null))scheduleCue();
+}
+function finishCalibration(){
+  const ks=Object.keys(calChars);if(!ks.length)return;
+  selfSpk=+ks.sort((a,b)=>calChars[b]-calChars[a])[0];
+  entries.forEach(e=>{e.role=e.spk===selfSpk?"self":"other"});
+  setStatus(`聞き取り中。自分＝話者${selfSpk} として扱います。`,"live");renderLog();renderLatest();
+}
+function reassignSelf(spk){selfSpk=spk;entries.forEach(e=>{e.role=e.spk===spk?"self":"other"});
+  setStatus(`自分＝話者${spk} に変更しました。`,"live");renderLog();renderLatest();}
+
+/* ================= 表示 ================= */
+function logEls(){return[$("logM"),$("logP")]}
+function showInterim(txt){logEls().forEach(l=>{let el=l.querySelector(".interim");if(!el){el=document.createElement("div");el.className="line interim";l.appendChild(el)}el.textContent=txt});scrollLogs()}
+function removeInterim(){logEls().forEach(l=>l.querySelector(".interim")?.remove())}
+function renderLog(){
+  logEls().forEach(log=>{log.innerHTML="";
+    for(const e of entries.slice(-60)){
+      const d=document.createElement("div"),me=e.role==="self";
+      d.className="line"+(me?" me":"");
+      d.innerHTML=`<span class="who">${me?"自分":(cfg.mode==="pc"?"相手"+(e.spk?String.fromCharCode(64+e.spk+1):""):"話者"+e.spk)}</span>${esc(e.text)}`;
+      if(cfg.mode!=="pc"){let pt;
+        d.addEventListener("touchstart",()=>{pt=setTimeout(()=>reassignSelf(e.spk),650)},{passive:true});
+        d.addEventListener("touchend",()=>clearTimeout(pt));d.addEventListener("touchmove",()=>clearTimeout(pt),{passive:true});
+        d.addEventListener("contextmenu",ev=>{ev.preventDefault();reassignSelf(e.spk)});}
+      log.appendChild(d);}
+  });scrollLogs();
+}
+function scrollLogs(){document.querySelectorAll(".col").forEach(c=>{if(c.scrollHeight-c.scrollTop-c.clientHeight<260)c.scrollTop=c.scrollHeight})}
+function renderLatest(){
+  const o=entries.filter(e=>e.role==="other");if(!o.length)return;
+  const last=o.slice(-2);
+  $("latest").innerHTML=(last.length>1?`<span class="old">${esc(last[0].text)}</span>`:"")+esc(last[last.length-1].text);
+}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+function showNote(r){
+  $("noteWait").style.display="none";
+  const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
+  set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
+  $("noteStamp").textContent=$("clock").textContent;
+  if(r.flag){$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(navigator.vibrate)navigator.vibrate(120)}
+  else $("alertCard").style.display="none";
+}
+
+/* ================= Claude ================= */
+async function claude(model,system,user,maxTokens){
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{
+    "Content-Type":"application/json","x-api-key":cfg.aKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model,max_tokens:maxTokens||500,system,messages:[{role:"user",content:user}]})});
+  if(!r.ok)throw new Error("Claude "+r.status+": "+(await r.text()).slice(0,120));
+  const d=await r.json();return d.content.filter(c=>c.type==="text").map(c=>c.text).join("\n");
+}
+function parseJSON(txt){const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error("JSON解析に失敗: "+txt.slice(0,80));return JSON.parse(m[0])}
+function stamp(t){return `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,"0")}`}
+function transcriptText(n){return entries.slice(-n).map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}
+
+/* 常時カンペ：相手が黙って pause 秒たったら1回 */
+function scheduleCue(){cueDirty=true;clearTimeout(cueTimer);cueTimer=setTimeout(runCue,cfg.pause*1000)}
+async function runCue(){
+  if(!running||!cueDirty)return;
+  if(cueBusy){cueTimer=setTimeout(runCue,800);return}
+  cueBusy=true;cueDirty=false;$("dot").className="dot think";
+  try{
+    const txt=await claude(cfg.mFast,
+`あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。
+相手の直近の発言に対して、今この瞬間に自分が言うべきことを、必ずJSONのみで返してください。形式:
+{"intent":"相手が本当に言いたいこと・求めていることを1行（30文字以内）",
+ "say":["自分がそのまま口に出せる第一声（45文字以内）","別の切り返しか補足の一言（45文字以内）"],
+ "ask":"相手に確認すべき一言。不要ならnull",
+ "flag":"前提メモの警戒事項に触れている・即決してはいけない場合の注意1行。なければnull"}
+・相手が雑談や相槌だけなら say は短い相槌レベルでよい
+・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
+・会話に出ていない事実を作らない`,
+`【前提メモ】\n${cfg.memo}\n\n【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,400);
+    showNote(parseJSON(txt));lastCueAt=Date.now();
+  }catch(e){toast(e.message)}
+  cueBusy=false;if(running)$("dot").className="dot live";
+  if(cueDirty)scheduleCue();
+}
+async function refreshSummary(){
+  if(!running||entries.length<4)return;
+  try{
+    const txt=await claude(cfg.mFast,
+`会議の書き起こしから、これまでの要点を最大5つ、各35文字以内で日本語の箇条書きにします。決まったこと・数字・相手の要望を優先。必ずJSONのみ: {"summary":["…","…"]}`,
+`【前提メモ】\n${cfg.memo}\n\n【前回の要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【会話】\n${transcriptText(80)}`,400);
+    const r=parseJSON(txt);if(r.summary?.length){summaryPts=r.summary;$("summary").innerHTML=summaryPts.map(s=>`<li>${esc(s)}</li>`).join("")}
+  }catch(e){toast(e.message)}
+}
+$("btnDeep").onclick=async()=>{
+  if(deepBusy)return;deepBusy=true;setStatus("深掘り回答案を作成中…","think");
+  try{
+    const txt=await claude(cfg.mSmart,
+`あなたはオンライン商談中の「自分」に、次に話す内容を提案するアシスタントです。必ずJSONのみ:
+{"answers":["回答案1","回答案2","回答案3"],"caution":"言ってはいけない・即決してはいけない点があれば1行、なければnull"}
+answersは自分がそのまま口に出せる日本語（各80文字以内）。1つ目は本題への回答、2つ目は相手の意図を確かめる質問、3つ目は持ち帰る言い方。前提メモの希望条件と警戒事項に沿うこと。`,
+`【前提メモ】\n${cfg.memo}\n\n【会話の要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(40)}`,700);
+    const r=parseJSON(txt);
+    $("deepCard").style.display="";
+    $("deep").innerHTML=(r.answers||[]).map(a=>`<li>${esc(a)}</li>`).join("")+(r.caution?`<li style="color:var(--warn)">${esc(r.caution)}</li>`:"");
+    if(navigator.vibrate)navigator.vibrate([60,40,60]);
+  }catch(e){toast(e.message)}
+  deepBusy=false;setStatus(running?"聞き取り中":"停止中",running?"live":"");
+};
+$("btnMin").onclick=async()=>{
+  if(deepBusy)return;deepBusy=true;setStatus("議事録を作成中…","think");
+  try{
+    const txt=await claude(cfg.mSmart,
+`会議の書き起こしから日本語の議事録を作ります。見出しは「日時・参加者」「決まったこと」「相手の要望・条件」「自分の回答・保留にしたこと」「次のアクション（誰が・いつまでに）」「未確認事項」。箇条書き中心、太字記号（**）は使わない。事実と推測を混ぜない。`,
+`【前提メモ】\n${cfg.memo}\n\n【会話（全文）】\n${entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}`,1800);
+    $("minText").value=txt.trim();$("minSheet").classList.add("open");
+  }catch(e){toast(e.message)}
+  deepBusy=false;setStatus("停止中","");
+};
+
+/* ================= PWA ================= */
+(()=>{const man={name:"会議カンペ",short_name:"カンペ",start_url:location.pathname,display:"standalone",background_color:"#1b2028",theme_color:"#1b2028",icons:[]};
+  const l=document.createElement("link");l.rel="manifest";l.href=URL.createObjectURL(new Blob([JSON.stringify(man)],{type:"application/json"}));document.head.appendChild(l);})();
+document.addEventListener("visibilitychange",async()=>{if(document.visibilityState==="visible"&&running){try{wakeLock=await navigator.wakeLock?.request("screen")}catch(_){}}});
+</script>
+</body>
+</html>
