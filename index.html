@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17f -->
+<!-- BUILD_TAG: 2026-09-17h -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.5 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.7 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -39,6 +39,14 @@ input,select,textarea{font-family:inherit}
 .top .st{font-size:13px;color:var(--muted);flex:1;line-height:1.35}
 .top .time{font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
 .gear{background:transparent;font-size:22px;padding:2px 6px;color:var(--muted)}
+.gear.hist{font-size:13px;border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+.hlist{display:flex;flex-direction:column;gap:10px}
+.hitem{background:var(--panel);border-radius:12px;padding:12px 14px}
+.hitem .ht{font-size:15px;font-weight:700;margin-bottom:2px}
+.hitem .hm{font-size:13px;color:var(--muted);line-height:1.5}
+.hitem .hb{display:flex;gap:8px;margin-top:8px}
+.hitem .hb button{padding:9px 14px;font-size:14px}
+.hitem .hb .del{background:#5a2f2f}
 
 .wrap{flex:1;min-height:0;display:flex;flex-direction:column}
 .col{overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
@@ -139,6 +147,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="dot" id="dot"></div>
   <div class="st" id="status">停止中。右下の開始で聞き取りを始めます。</div>
   <div class="time" id="clock">00:00</div>
+  <button class="gear hist" id="btnHist" aria-label="履歴">履歴</button>
   <button class="gear" id="btnGear" aria-label="設定">⚙</button>
 </div>
 
@@ -217,7 +226,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
     <div class="f"><label>用語リスト（カンマ区切り、nova-3のみ）</label><input id="keyterms" placeholder="例: 柔整ガイド, ジーニー, SWELL"><small>人名・会社名・専門用語を入れると認識を強化（最大100語）</small></div>
   </div>
   <div class="row">
-    <div class="f"><label>カンペを出す間（相手が黙ってから秒）</label><input id="pause" type="number" value="2" min="1" max="6" step="0.5"></div>
+    <div class="f"><label>カンペを出す間（相手が黙ってから秒）</label><input id="pause" type="number" value="1.5" min="0.5" max="6" step="0.5"></div>
     <div class="f"><label>要点の更新間隔（秒）</label><input id="interval" type="number" value="60" min="20" max="180"></div>
   </div>
   <div class="row">
@@ -227,7 +236,15 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.5 / BUILD_TAG 2026-09-17f</div>
+  <div class="foot">mtg_cue ver1.7 / BUILD_TAG 2026-09-17h</div>
+</div></div>
+
+<!-- 履歴 -->
+<div class="sheet" id="histSheet"><div class="in">
+  <h1>会議の履歴</h1>
+  <p class="hint" style="margin-bottom:12px">新しい会議を開始すると、前回分はここに自動で保存されます（最大30件、この端末内のみ）。</p>
+  <div class="hlist" id="hlist"></div>
+  <div class="btns"><button id="btnHistClose">閉じる</button></div>
 </div></div>
 
 <!-- 議事録 -->
@@ -240,7 +257,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17f");
+console.log("BUILD_TAG: 2026-09-17h");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -254,7 +271,7 @@ const $=id=>document.getElementById(id);
 const S={
   load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
     $("dgKey").value=s.dgKey||""; $("aKey").value=s.aKey||""; $("dgModel").value=s.dgModel||"nova-3|multi";
-    $("keyterms").value=s.keyterms||""; $("pause").value=s.pause||2; $("interval").value=s.interval||60;
+    $("keyterms").value=s.keyterms||""; $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
     $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
     $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode};},
   save(){const s={mode:curMode,dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
@@ -289,6 +306,43 @@ function saveSession(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{
   localStorage.setItem("mc_session",JSON.stringify({v:1,startedAt,elapsed:t0?Date.now()-t0:0,mode:cfg.mode,entries,selfSpk,calDone,summaryPts,lastNote,savedAt:Date.now()}));
 }catch(e){}},1500)}
 function clearSession(){try{localStorage.removeItem("mc_session")}catch(_){}}
+let minutesText="";
+function sessionTitle(){const m=(cfg.memo||"").split("\n")[0].replace(/^相手[：:]\s*/,"").slice(0,30);return m||"会議"}
+function fmtDate(ts){const d=new Date(ts);return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`}
+function loadHistory(){try{return JSON.parse(localStorage.getItem("mc_history")||"[]")}catch(_){return[]}}
+function archiveSession(){
+  if(entries.length<3)return;
+  const item={id:startedAt||Date.now(),title:sessionTitle(),startedAt:startedAt||Date.now(),elapsed:t0?Date.now()-t0:0,entries,summaryPts,minutes:minutesText,memo:cfg.memo,mode:cfg.mode,selfSpk,savedAt:Date.now()};
+  let h=loadHistory().filter(x=>x.id!==item.id);h.unshift(item);h=h.slice(0,30);
+  try{localStorage.setItem("mc_history",JSON.stringify(h))}
+  catch(e){h=h.slice(0,10);try{localStorage.setItem("mc_history",JSON.stringify(h))}catch(_){toast("履歴の保存に失敗しました（容量不足）")}}
+}
+function renderHistory(){
+  const h=loadHistory(),box=$("hlist");
+  if(!h.length){box.innerHTML='<div class="empty">まだ履歴はありません</div>';return}
+  box.innerHTML="";
+  for(const it of h){
+    const d=document.createElement("div");d.className="hitem";
+    const mins=Math.round((it.elapsed||0)/60000);
+    d.innerHTML=`<div class="ht">${esc(it.title)}</div><div class="hm">${fmtDate(it.startedAt)}　${mins}分　発言${it.entries.length}件${it.minutes?"　議事録あり":""}<br>${esc((it.summaryPts||[]).slice(0,2).join(" / "))}</div><div class="hb"><button class="open">開く</button><button class="del">削除</button></div>`;
+    d.querySelector(".open").onclick=()=>{
+      if(running){toast("録音中は開けません。停止してから開いてください");return}
+      archiveSession();
+      entries=it.entries;summaryPts=it.summaryPts||[];selfSpk=it.selfSpk??null;calDone=true;startedAt=it.startedAt;minutesText=it.minutes||"";lastNote=null;t0=Date.now()-(it.elapsed||0);
+      resetUI();renderLog();renderLatest();
+      if(summaryPts.length)$("summary").innerHTML=summaryPts.map(x=>`<li>${esc(x)}</li>`).join("");
+      $("btnMin").disabled=entries.length<3;$("btnMin").style.display="";
+      const x=Math.floor((it.elapsed||0)/1000);$("clock").textContent=String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0");
+      setStatus(`履歴を開きました：${it.title}（${fmtDate(it.startedAt)}）`,"");saveSession();
+      $("histSheet").classList.remove("open");
+      if(minutesText){$("minText").value=minutesText;}
+    };
+    d.querySelector(".del").onclick=()=>{if(!confirm("この履歴を削除しますか？"))return;const h2=loadHistory().filter(x=>x.id!==it.id);localStorage.setItem("mc_history",JSON.stringify(h2));renderHistory()};
+    box.appendChild(d);
+  }
+}
+$("btnHist").onclick=()=>{renderHistory();$("histSheet").classList.add("open")};
+$("btnHistClose").onclick=()=>$("histSheet").classList.remove("open");
 function restoreSession(){
   let d;try{d=JSON.parse(localStorage.getItem("mc_session")||"null")}catch(_){}
   if(!d||!d.entries||!d.entries.length)return false;
@@ -309,7 +363,7 @@ async function start(){
   if(!cfg.dgKey||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
   if(entries.length&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
-  if(!resume){entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;startedAt=Date.now();clearSession();resetUI();}
+  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
@@ -342,7 +396,7 @@ function stop(){
   clearInterval(clockTimer);clearInterval(sumTimer);clearTimeout(cueTimer);wakeLock?.release?.();
   paused=false;$("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
   $("btnPause").style.display="none";$("btnMin").style.display="";$("btnMin").disabled=entries.length<3;
-  setStatus("停止しました。書き起こしは画面に残ります（再読み込みしても残ります）。","");saveSession();
+  setStatus("停止しました。書き起こしは画面に残ります（履歴にも保存されます）。","");saveSession();archiveSession();
 }
 function cleanupMedia(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[]}
 $("btnGo").onclick=()=>running?stop():start();
@@ -429,7 +483,7 @@ function onDg(role,m){
     if(r==="other")gotOther=true;
   }
   removeInterim();renderLog();renderLatest();saveSession();
-  if(gotOther&&calDone)scheduleCue();
+  if(gotOther&&calDone){ if(m.speech_final) scheduleCue(0); else scheduleCue(); }
 }
 function finishCalibration(){
   const ks=Object.keys(calChars);
@@ -472,12 +526,14 @@ function renderLatest(){
   $("latest").innerHTML=(last.length>1?`<span class="old">${esc(last[0].text)}</span>`:"")+esc(last[last.length-1].text);
 }
 function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
-function showNote(r,restoring){
+let noteStamp="";
+function showNote(r,restoring,first){
   lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
   const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
   set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
-  if(!restoring)r.stamp=$("clock").textContent;$("noteStamp").textContent=r.stamp||"";
-  if(r.flag){$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(navigator.vibrate)navigator.vibrate(120)}
+  if(restoring)noteStamp=r.stamp||"";else if(first||!noteStamp)noteStamp=$("clock").textContent;
+  r.stamp=noteStamp;$("noteStamp").textContent=noteStamp;
+  if(r.flag){const changed=$("alerts").textContent!==r.flag;$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(changed&&navigator.vibrate)navigator.vibrate(120)}
   else $("alertCard").style.display="none";
 }
 
@@ -489,33 +545,60 @@ async function claude(model,system,user,maxTokens){
   if(!r.ok)throw new Error("Claude "+r.status+": "+(await r.text()).slice(0,120));
   const d=await r.json();return d.content.filter(c=>c.type==="text").map(c=>c.text).join("\n");
 }
+async function claudeStream(model,system,user,maxTokens,onText,signal){
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal,headers:{
+    "Content-Type":"application/json","x-api-key":cfg.aKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model,max_tokens:maxTokens||400,stream:true,system,messages:[{role:"user",content:user}]})});
+  if(!r.ok)throw new Error("Claude "+r.status+": "+(await r.text()).slice(0,120));
+  const rd=r.body.getReader(),dec=new TextDecoder();let buf="",full="";
+  while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+    let i;while((i=buf.indexOf("\n"))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);
+      if(!line.startsWith("data:"))continue;let ev;try{ev=JSON.parse(line.slice(5))}catch(_){continue}
+      if(ev.type==="content_block_delta"&&ev.delta?.text){full+=ev.delta.text;onText(full)}}}
+  return full;
+}
+function parseCueLines(txt){
+  const r={needs_reply:true,say:[]};
+  for(const raw of txt.split("\n")){const line=raw.trim();const m=line.match(/^(返答|一言|意図|別案|確認|注意)[:：]\s*(.*)$/);if(!m)continue;
+    const v=m[2].replace(/^(なし|不要|null)$/,"");
+    if(m[1]==="返答")r.needs_reply=!/不要/.test(m[2]);
+    else if(m[1]==="一言")r.say[0]=v;else if(m[1]==="別案")r.say[1]=v;
+    else if(m[1]==="意図")r.intent=v;else if(m[1]==="確認")r.ask=v;else if(m[1]==="注意")r.flag=v;}
+  return r;
+}
 function parseJSON(txt){const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error("JSON解析に失敗: "+txt.slice(0,80));return JSON.parse(m[0])}
 function stamp(t){return `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,"0")}`}
 function transcriptText(n){return entries.slice(-n).map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}
 
 /* 常時カンペ：相手が黙って pause 秒たったら1回 */
-function scheduleCue(){cueDirty=true;clearTimeout(cueTimer);cueTimer=setTimeout(runCue,cfg.pause*1000)}
+let cueAbort=null;
+function scheduleCue(delay){cueDirty=true;clearTimeout(cueTimer);
+  if(cueBusy&&cueAbort){cueAbort.abort();} // 作りかけは捨てて最新の発言で作り直す
+  cueTimer=setTimeout(runCue,(delay??cfg.pause)*1000)}
 async function runCue(){
   if(!running||!cueDirty)return;
-  if(cueBusy){cueTimer=setTimeout(runCue,800);return}
+  if(cueBusy){cueTimer=setTimeout(runCue,300);return}
   cueBusy=true;cueDirty=false;$("dot").className="dot think";
+  const ac=new AbortController();cueAbort=ac;let shown=false;
   try{
-    const txt=await claude(cfg.mFast,
+    const txt=await claudeStream(cfg.mFast,
 `あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。
-相手の直近の発言に対して、今この瞬間に自分が言うべきことを、必ずJSONのみで返してください。形式:
-{"needs_reply":true/false（相手が自分に質問・依頼・相談・判断を求めている＝true。説明や独白の途中、雑談＝false）,
- "intent":"相手が本当に言いたいこと・求めていることを1行（30文字以内）",
- "say":["自分がそのまま口に出せる第一声（45文字以内）","別の切り返しか補足の一言（45文字以内）"],
- "ask":"相手に確認すべき一言（40文字以内）。不要ならnull",
- "flag":"前提メモの警戒事項に触れている・即決してはいけない場合の注意1行。なければnull"}
-・needs_replyがfalseのときは say は相槌か短い受け止め1つだけでよい（2つ目は空でよい）
+相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の6行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。
+返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
+一言: 自分がそのまま口に出せる第一声（45文字以内。不要のときは相槌か短い受け止め）
+意図: 相手が本当に言いたいこと・求めていること（30文字以内）
+別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
+確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
+注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
 ・会話に出ていない事実を作らない`,
-`【前提メモ】\n${cfg.memo}\n\n【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,400);
-    showNote(parseJSON(txt));lastCueAt=Date.now();
-  }catch(e){toast(e.message)}
+`【前提メモ】\n${cfg.memo}\n\n【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
+      full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full); if(r.say[0]){showNote(r,false,!shown);shown=true;} },ac.signal);
+    if(!ac.signal.aborted){showNote(parseCueLines(txt),false,!shown);lastCueAt=Date.now();}
+  }catch(e){ if(e.name!=="AbortError")toast(e.message) }
+  if(cueAbort===ac)cueAbort=null;
   cueBusy=false;if(running)$("dot").className="dot live";
-  if(cueDirty)scheduleCue();
+  if(cueDirty)scheduleCue(0);
 }
 async function refreshSummary(){
   if(!running||entries.length<4)return;
@@ -552,7 +635,7 @@ $("btnMin").onclick=async()=>{
 ・書き起こしの誤変換は文脈と前提メモから正しい語に直す。事実と推測を混ぜず、推測は「〜と思われる」と書く
 ・全体で600〜1000字程度`,
 `【前提メモ】\n${cfg.memo}\n\n【会話（全文）】\n${entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}`,1800);
-    $("minText").value=txt.trim();$("minSheet").classList.add("open");
+    $("minText").value=txt.trim();minutesText=txt.trim();$("minSheet").classList.add("open");archiveSession();
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus("停止中","");
 };
