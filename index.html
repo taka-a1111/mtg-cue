@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17k -->
+<!-- BUILD_TAG: 2026-09-17l -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.10 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.11 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -237,11 +237,15 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
     <div class="f"><label>カンペ・要点モデル（速い）</label><input id="mFast" value="claude-haiku-4-5-20251001"></div>
     <div class="f"><label>深掘り・議事録モデル（賢い）</label><input id="mSmart" value="claude-sonnet-5"></div>
   </div>
+  <div class="row">
+    <div class="f"><label>Googleドライブ保存（GASウェブアプリのURL）</label><input id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec"><small>空欄なら保存しない。停止時と議事録作成時に自動でドライブの「mtg-cue」フォルダへ保存</small></div>
+    <div class="f"><label>保存トークン（GAS側と同じ合言葉）</label><input id="gasToken" type="password" autocomplete="off"></div>
+  </div>
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.10 / BUILD_TAG 2026-09-17k</div>
+  <div class="foot">mtg_cue ver1.11 / BUILD_TAG 2026-09-17l</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -262,7 +266,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17k");
+console.log("BUILD_TAG: 2026-09-17l");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -276,11 +280,11 @@ const $=id=>document.getElementById(id);
 const S={
   load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
     $("dgKey").value=s.dgKey||""; $("oaKey").value=s.oaKey||""; $("aKey").value=s.aKey||""; setStt(s.stt||"deepgram"); $("dgModel").value=s.dgModel||"nova-3|multi";
-    $("keyterms").value=s.keyterms||""; $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
+    $("keyterms").value=s.keyterms||"";$("gasUrl").value=s.gasUrl||"";$("gasToken").value=s.gasToken||""; $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
     $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
     $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode,stt:curStt};},
   save(){const s={mode:curMode,stt:curStt,oaKey:$("oaKey").value.trim(),dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
-    keyterms:$("keyterms").value.trim(),pause:+$("pause").value||2,interval:+$("interval").value||60,
+    keyterms:$("keyterms").value.trim(),gasUrl:$("gasUrl").value.trim(),gasToken:$("gasToken").value.trim(),pause:+$("pause").value||2,interval:+$("interval").value||60,
     mFast:$("mFast").value.trim(),mSmart:$("mSmart").value.trim(),memo:$("memo").value};
     localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
 };
@@ -306,7 +310,7 @@ $("btnMinCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("min
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(t._x);t._x=setTimeout(()=>t.style.display="none",3000)}
 
 /* ================= 状態 ================= */
-let running=false, paused=false, conns=[], streams=[], wakeLock=null;
+let running=false, paused=false, conns=[], streams=[], wakeLock=null, driveTimer=null;
 let t0=0, clockTimer=null, sumTimer=null, cueTimer=null, cueBusy=false, cueDirty=false, deepBusy=false;
 let entries=[];            // {t, role:'self'|'other', spk, text}
 let selfSpk=null;          // phoneモードの自分の話者番号
@@ -327,6 +331,21 @@ function archiveSession(){
   let h=loadHistory().filter(x=>x.id!==item.id);h.unshift(item);h=h.slice(0,30);
   try{localStorage.setItem("mc_history",JSON.stringify(h))}
   catch(e){h=h.slice(0,10);try{localStorage.setItem("mc_history",JSON.stringify(h))}catch(_){toast("履歴の保存に失敗しました（容量不足）")}}
+}
+let driveBusy=false;
+async function saveToDrive(reason){
+  if(!cfg.gasUrl||entries.length<3)return;
+  if(driveBusy)return;driveBusy=true;
+  const payload={token:cfg.gasToken||"",id:String(startedAt||t0),title:sessionTitle(),startedAt:startedAt||Date.now(),elapsed:t0?Date.now()-t0:0,
+    summary:summaryPts,minutes:minutesText,memo:cfg.memo,
+    transcript:entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")};
+  try{
+    const r=await fetch(cfg.gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(d.ok){toast("ドライブに保存しました"+(reason?"（"+reason+"）":""));logd("drive ok",d.name)}
+    else{toast("ドライブ保存に失敗: "+(d.error||"").slice(0,60));logd("drive error",d.error)}
+  }catch(e){toast("ドライブ保存に失敗（URLか公開設定を確認）");logd("drive fetch error",String(e))}
+  driveBusy=false;
 }
 function renderHistory(){
   const h=loadHistory(),box=$("hlist");
@@ -397,6 +416,7 @@ async function start(){
   $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").style.display="none";$("btnPause").style.display="";$("btnPause").textContent="一時停止";$("btnPause").classList.remove("on");
   clockTimer=setInterval(tick,1000);
   sumTimer=setInterval(refreshSummary,cfg.interval*1000);
+  driveTimer=setInterval(()=>saveToDrive(""),5*60*1000);
   if(resume&&calDone)setStatus("続きから聞き取り中","live");
   else{setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"自分の声を登録してください。","live");
     if(cfg.mode!=="pc"&&cfg.stt!=="openai"){$("calbox").classList.add("on");$("noteWait").style.display="none"}
@@ -407,10 +427,10 @@ async function start(){
 function stop(){
   running=false;
   conns.forEach(c=>c.close());conns=[];cleanupMedia();
-  clearInterval(clockTimer);clearInterval(sumTimer);clearTimeout(cueTimer);wakeLock?.release?.();
+  clearInterval(clockTimer);clearInterval(sumTimer);clearInterval(driveTimer);clearTimeout(cueTimer);wakeLock?.release?.();
   paused=false;$("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
   $("btnPause").style.display="none";$("btnMin").style.display="";$("btnMin").disabled=entries.length<3;
-  setStatus("停止しました。書き起こしは画面に残ります（履歴にも保存されます）。","");saveSession();archiveSession();
+  setStatus("停止しました。書き起こしは画面に残ります（履歴にも保存されます）。","");saveSession();archiveSession();saveToDrive("会議終了");
 }
 function cleanupMedia(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[]}
 $("btnGo").onclick=()=>running?stop():start();
@@ -714,7 +734,7 @@ $("btnMin").onclick=async()=>{
 ・書き起こしの誤変換は文脈と前提メモから正しい語に直す。事実と推測を混ぜず、推測は「〜と思われる」と書く
 ・全体で600〜1000字程度`,
 `【前提メモ】\n${cfg.memo}\n\n【会話（全文）】\n${entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}`,1800);
-    $("minText").value=txt.trim();minutesText=txt.trim();$("minSheet").classList.add("open");archiveSession();
+    $("minText").value=txt.trim();minutesText=txt.trim();$("minSheet").classList.add("open");archiveSession();saveToDrive("議事録");
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus("停止中","");
 };
