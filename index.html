@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17h -->
+<!-- BUILD_TAG: 2026-09-17i -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.7 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.8 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -216,14 +216,18 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <button data-v="pc">PC：タブ音声＋マイク</button>
     </div>
     <small id="modeHint"></small></div>
+  <div class="f"><label>文字起こしエンジン</label>
+    <div class="seg" id="sttSeg"><button data-v="deepgram">Deepgram（話者分離あり）</button><button data-v="openai">OpenAI gpt-4o-transcribe（日本語精度）</button></div>
+    <small id="sttHint"></small></div>
   <div class="f"><label>Deepgram APIキー</label><input id="dgKey" type="password" autocomplete="off"></div>
+  <div class="f"><label>OpenAI APIキー</label><input id="oaKey" type="password" autocomplete="off"></div>
   <div class="f"><label>Anthropic APIキー</label><input id="aKey" type="password" autocomplete="off">
     <small>キーはこの端末のブラウザ内にだけ保存されます。共用端末では使わないでください。</small></div>
   <div class="row">
-    <div class="f"><label>文字起こしモデル</label>
+    <div class="f"><label>Deepgramモデル</label>
       <select id="dgModel"><option value="nova-3|multi">nova-3 / multi</option><option value="nova-2|ja">nova-2 / ja</option></select>
       <small>日本語が崩れるときは nova-2 / ja に切り替え</small></div>
-    <div class="f"><label>用語リスト（カンマ区切り、nova-3のみ）</label><input id="keyterms" placeholder="例: 柔整ガイド, ジーニー, SWELL"><small>人名・会社名・専門用語を入れると認識を強化（最大100語）</small></div>
+    <div class="f"><label>用語リスト（カンマ区切り）</label><input id="keyterms" placeholder="例: 柔整ガイド, ジーニー, SWELL"><small>人名・会社名・専門用語。Deepgram(nova-3)はkeyterm、OpenAIはヒント文として渡す</small></div>
   </div>
   <div class="row">
     <div class="f"><label>カンペを出す間（相手が黙ってから秒）</label><input id="pause" type="number" value="1.5" min="0.5" max="6" step="0.5"></div>
@@ -236,7 +240,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.7 / BUILD_TAG 2026-09-17h</div>
+  <div class="foot">mtg_cue ver1.8 / BUILD_TAG 2026-09-17i</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -257,7 +261,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17h");
+console.log("BUILD_TAG: 2026-09-17i");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -270,16 +274,21 @@ const DEFAULT_MEMO =
 const $=id=>document.getElementById(id);
 const S={
   load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
-    $("dgKey").value=s.dgKey||""; $("aKey").value=s.aKey||""; $("dgModel").value=s.dgModel||"nova-3|multi";
+    $("dgKey").value=s.dgKey||""; $("oaKey").value=s.oaKey||""; $("aKey").value=s.aKey||""; setStt(s.stt||"deepgram"); $("dgModel").value=s.dgModel||"nova-3|multi";
     $("keyterms").value=s.keyterms||""; $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
     $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
-    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode};},
-  save(){const s={mode:curMode,dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
+    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode,stt:curStt};},
+  save(){const s={mode:curMode,stt:curStt,oaKey:$("oaKey").value.trim(),dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
     keyterms:$("keyterms").value.trim(),pause:+$("pause").value||2,interval:+$("interval").value||60,
     mFast:$("mFast").value.trim(),mSmart:$("mSmart").value.trim(),memo:$("memo").value};
     localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
 };
-let curMode="phone";
+let curMode="phone",curStt="deepgram";
+function setStt(v){curStt=v;[...$("sttSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  $("sttHint").textContent=v==="openai"
+   ?"日本語に強い。話者分離がないので、スマホモードでは全員を相手として扱います（自分の声の除外は不可）。PCモードはタブ音声＝相手／マイク＝自分で分離できます。"
+   :"話者分離あり。スマホモードで自分の声を除外できます。日本語の精度はやや落ちます。";}
+$("sttSeg").onclick=e=>{const b=e.target.closest("button");if(b)setStt(b.dataset.v)};
 function hasDisplayAudio(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia)&&!/Android|iPhone|iPad/i.test(navigator.userAgent)}
 function setMode(m){curMode=m;[...$("modeSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===m));
   $("modeHint").textContent=m==="pc"
@@ -360,10 +369,11 @@ function restoreSession(){
 
 /* ================= 開始・停止 ================= */
 async function start(){
-  if(!cfg.dgKey||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
+  const sttKeyOk=cfg.stt==="openai"?!!cfg.oaKey:!!cfg.dgKey;
+  if(!sttKeyOk||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
   if(entries.length&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
-  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;startedAt=Date.now();clearSession();resetUI();}
+  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
@@ -386,7 +396,8 @@ async function start(){
   sumTimer=setInterval(refreshSummary,cfg.interval*1000);
   if(resume&&calDone)setStatus("続きから聞き取り中","live");
   else{setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"自分の声を登録してください。","live");
-    if(cfg.mode!=="pc"){$("calbox").classList.add("on");$("noteWait").style.display="none"}}
+    if(cfg.mode!=="pc"&&cfg.stt!=="openai"){$("calbox").classList.add("on");$("noteWait").style.display="none"}
+    if(cfg.mode!=="pc"&&cfg.stt==="openai")setStatus("聞き取り中（OpenAI：全員を相手として扱います）","live");}
   saveSession();
   try{wakeLock=await navigator.wakeLock?.request("screen")}catch(_){}
 }
@@ -422,7 +433,67 @@ function tick(){const s=Math.floor((Date.now()-t0)/1000);
 }
 
 /* ================= Deepgram 接続 ================= */
-function openDg(role,stream,diarize){
+function openDg(role,stream,diarize){ return cfg.stt==="openai"?openOpenAI(role,stream):openDeepgram(role,stream,diarize) }
+function openOpenAI(role,stream){
+  const url="wss://api.openai.com/v1/realtime?intent=transcription";
+  const hint=(cfg.keyterms||"").split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).join("、");
+  const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const src=audioCtx.createMediaStreamSource(stream);
+  const proc=audioCtx.createScriptProcessor(4096,1,1);
+  const ratio=audioCtx.sampleRate/24000;
+  let ws=null,closed=false,retry=0,retryTimer=null,fallback=false,ready=false;
+  proc.onaudioprocess=ev=>{
+    if(!ws||ws.readyState!==1||!ready||paused)return;
+    const inp=ev.inputBuffer.getChannelData(0);
+    const n=Math.floor(inp.length/ratio),out=new Int16Array(n);
+    for(let i=0;i<n;i++){const a=Math.floor(i*ratio),b=Math.min(inp.length,Math.floor((i+1)*ratio));let s=0;for(let j=a;j<b;j++)s+=inp[j];const v=s/Math.max(1,b-a);out[i]=Math.max(-1,Math.min(1,v))*32767;}
+    let bin="";const u8=new Uint8Array(out.buffer);for(let i=0;i<u8.length;i+=0x8000)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));
+    ws.send(JSON.stringify({type:"input_audio_buffer.append",audio:btoa(bin)}));
+  };
+  src.connect(proc);
+  const sink=audioCtx.createGain();sink.gain.value=0;proc.connect(sink);sink.connect(audioCtx.destination);
+  const sessGA=()=>({type:"session.update",session:{type:"transcription",audio:{input:{format:{type:"audio/pcm",rate:24000},
+      transcription:{model:"gpt-4o-transcribe",language:"ja",prompt:hint?("会議の文字起こし。用語："+hint):"日本語の会議の文字起こし"},
+      turn_detection:{type:"server_vad",threshold:0.5,prefix_padding_ms:300,silence_duration_ms:500},noise_reduction:{type:"near_field"}}}}});
+  const sessBeta=()=>({type:"transcription_session.update",session:{input_audio_format:"pcm16",
+      input_audio_transcription:{model:"gpt-4o-transcribe",language:"ja",prompt:hint?("会議の文字起こし。用語："+hint):"日本語の会議の文字起こし"},
+      turn_detection:{type:"server_vad",threshold:0.5,prefix_padding_ms:300,silence_duration_ms:500},input_audio_noise_reduction:{type:"near_field"}}});
+  function connect(){
+    ws=new WebSocket(url,["realtime","openai-insecure-api-key."+cfg.oaKey,"openai-beta.realtime-v1"]);
+    ws.onopen=()=>{ready=false;fallback=false;ws.send(JSON.stringify(sessGA()));
+      if(retry>0){toast("再接続しました");if(running)setStatus("聞き取り中（再接続済み）","live")}retry=0;};
+    ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
+      if(m.type==="error"){const msg=m.error?.message||"";
+        if(!fallback&&!ready){fallback=true;ws.send(JSON.stringify(sessBeta()));return}
+        if(!ready){toast("OpenAIに接続できません: "+msg.slice(0,80));stop();return}
+        return;}
+      if(m.type==="session.updated"||m.type==="transcription_session.updated"||m.type==="session.created"){ if(m.type!=="session.created")ready=true; return;}
+      onOa(role,m);};
+    ws.onerror=()=>{};
+    ws.onclose=ev=>{
+      if(closed||!running)return;
+      if(retry>=10){toast("文字起こしの再接続に失敗しました。停止します。");stop();return}
+      retry++;const wait=Math.min(15000,1000*Math.pow(2,retry-1));
+      if(role!=="self")setStatus(`接続が切れました。再接続中（${retry}回目）…音声は取り続けています`,"cal");
+      retryTimer=setTimeout(connect,wait);
+    };
+  }
+  connect();
+  return {close(){closed=true;clearTimeout(retryTimer);try{ws&&ws.close()}catch(_){}try{proc.disconnect();audioCtx.close()}catch(_){}}};
+}
+const oaPartial={};
+function onOa(role,m){
+  if(paused)return;
+  if(m.type==="conversation.item.input_audio_transcription.delta"&&m.delta){oaPartial[role]=(oaPartial[role]||"")+m.delta;if(role!=="self")showInterim(oaPartial[role]);return}
+  if(m.type==="conversation.item.input_audio_transcription.completed"){
+    oaPartial[role]="";const text=(m.transcript||"").trim();if(!text)return;
+    const r=role==="mix"?"other":role;
+    entries.push({t:(Date.now()-t0)/1000,role:r,spk:0,text});
+    removeInterim();renderLog();renderLatest();saveSession();
+    if(r==="other"&&calDone)scheduleCue(0);
+  }
+}
+function openDeepgram(role,stream,diarize){
   const [model,lang]=cfg.dgModel.split("|");
   const url=`wss://api.deepgram.com/v1/listen?model=${model}&language=${lang}&diarize=${diarize}&smart_format=true&interim_results=true&endpointing=400&encoding=linear16&sample_rate=16000&channels=1`;
   const kt=(model==="nova-3"&&cfg.keyterms)?cfg.keyterms.split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).slice(0,100).map(x=>"&keyterm="+encodeURIComponent(x)).join(""):"";
@@ -511,8 +582,8 @@ function renderLog(){
     for(const e of entries.slice(-60)){
       const d=document.createElement("div"),me=e.role==="self";
       d.className="line"+(me?" me":"");
-      d.innerHTML=`<span class="who">${me?"自分":(cfg.mode==="pc"?"相手"+(e.spk?String.fromCharCode(64+e.spk+1):""):"話者"+e.spk)}</span>${esc(e.text)}`;
-      if(cfg.mode!=="pc"){let pt;
+      d.innerHTML=`<span class="who">${me?"自分":((cfg.mode==="pc"||cfg.stt==="openai")?"相手"+(e.spk?String.fromCharCode(64+e.spk+1):""):"話者"+e.spk)}</span>${esc(e.text)}`;
+      if(cfg.mode!=="pc"&&cfg.stt!=="openai"){let pt;
         d.addEventListener("touchstart",()=>{pt=setTimeout(()=>reassignSelf(e.spk),650)},{passive:true});
         d.addEventListener("touchend",()=>clearTimeout(pt));d.addEventListener("touchmove",()=>clearTimeout(pt),{passive:true});
         d.addEventListener("contextmenu",ev=>{ev.preventDefault();reassignSelf(e.spk)});}
@@ -590,6 +661,9 @@ async function runCue(){
 別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
 確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
 注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
+・書き起こしは音声認識なので誤変換や欠落がある。文脈と前提メモから本来の発言を推定して答える（例：「いつごらっぱらとる」→「いつから上がる」）
+・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
+・第一声は会話体で自然に。防御的・事務的な言い回しにしない
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
 ・会話に出ていない事実を作らない`,
 `【前提メモ】\n${cfg.memo}\n\n【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
