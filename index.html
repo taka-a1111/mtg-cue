@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17c -->
+<!-- BUILD_TAG: 2026-09-17e -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.2 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.4 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -42,6 +42,7 @@ input,select,textarea{font-family:inherit}
 
 .wrap{flex:1;min-height:0;display:flex;flex-direction:column}
 .col{overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.col>*{flex:none}
 .col.left{padding-bottom:110px}
 .col.right{display:none}
 @media (min-width:900px){
@@ -62,7 +63,7 @@ input,select,textarea{font-family:inherit}
 
 /* カンペ本体 */
 .note{background:var(--note);color:var(--note-ink);border-radius:6px 6px 14px 6px;padding:14px 16px 12px;
-  box-shadow:0 8px 24px rgba(0,0,0,.35);position:relative;min-height:120px}
+  box-shadow:0 8px 24px rgba(0,0,0,.35);position:relative;min-height:120px;overflow-wrap:anywhere}
 .note::before{content:"";position:absolute;left:14px;right:14px;top:-6px;height:12px;background:rgba(0,0,0,.08);border-radius:2px}
 .note .intent{font-size:14px;color:var(--note-dim);margin-bottom:8px;line-height:1.45}
 .note .say{font-size:21px;font-weight:700;line-height:1.5;margin-bottom:8px}
@@ -103,6 +104,8 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 .bar .go.stop{background:#7a3d3d}
 .bar .deepbtn{background:#2c4e7d}
 .bar .minbtn{background:#4a4360;flex:.7}
+.bar .pausebtn{background:#6b5a1e;flex:.8}
+.bar .pausebtn.on{background:#b8860b;color:#fff}
 
 /* 設定・議事録シート */
 .sheet{position:fixed;inset:0;background:var(--bg);overflow-y:auto;padding:16px 14px 40px;display:none;z-index:10}
@@ -188,6 +191,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 
 <div class="bar">
   <button class="go" id="btnGo">開始</button>
+  <button class="pausebtn" id="btnPause" style="display:none">一時停止</button>
   <button class="deepbtn" id="btnDeep" disabled>深掘り</button>
   <button class="minbtn" id="btnMin" disabled>議事録</button>
 </div>
@@ -221,7 +225,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.2 / BUILD_TAG 2026-09-17c</div>
+  <div class="foot">mtg_cue ver1.4 / BUILD_TAG 2026-09-17e</div>
 </div></div>
 
 <!-- 議事録 -->
@@ -234,7 +238,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17c");
+console.log("BUILD_TAG: 2026-09-17e");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -272,7 +276,7 @@ $("btnMinCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("min
 function toast(m){const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(t._x);t._x=setTimeout(()=>t.style.display="none",3000)}
 
 /* ================= 状態 ================= */
-let running=false, conns=[], streams=[], wakeLock=null;
+let running=false, paused=false, conns=[], streams=[], wakeLock=null;
 let t0=0, clockTimer=null, sumTimer=null, cueTimer=null, cueBusy=false, cueDirty=false, deepBusy=false;
 let entries=[];            // {t, role:'self'|'other', spk, text}
 let selfSpk=null;          // phoneモードの自分の話者番号
@@ -320,8 +324,8 @@ async function start(){
       streams.push(mic);conns.push(openDg("mix",mic,true));
     }
   }catch(e){toast("音声を取得できません: "+e.message);cleanupMedia();return}
-  running=true;if(!resume)t0=Date.now();
-  $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").disabled=true;
+  running=true;paused=false;if(!resume)t0=Date.now();
+  $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").style.display="none";$("btnPause").style.display="";$("btnPause").textContent="一時停止";$("btnPause").classList.remove("on");
   clockTimer=setInterval(tick,1000);
   sumTimer=setInterval(refreshSummary,cfg.interval*1000);
   if(resume&&calDone)setStatus("続きから聞き取り中","live");
@@ -334,12 +338,19 @@ function stop(){
   running=false;
   conns.forEach(c=>c.close());conns=[];cleanupMedia();
   clearInterval(clockTimer);clearInterval(sumTimer);clearTimeout(cueTimer);wakeLock?.release?.();
-  $("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
-  $("btnMin").disabled=entries.length<3;
+  paused=false;$("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
+  $("btnPause").style.display="none";$("btnMin").style.display="";$("btnMin").disabled=entries.length<3;
   setStatus("停止しました。書き起こしは画面に残ります（再読み込みしても残ります）。","");saveSession();
 }
 function cleanupMedia(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[]}
 $("btnGo").onclick=()=>running?stop():start();
+let pauseAt=0;
+$("btnPause").onclick=()=>{
+  if(!running)return;
+  paused=!paused;
+  if(paused){pauseAt=Date.now();clearTimeout(cueTimer);$("btnPause").textContent="再開";$("btnPause").classList.add("on");setStatus("一時停止中（共有と接続は保持）。「再開」で続きから。","cal");}
+  else{t0+=Date.now()-pauseAt;$("btnPause").textContent="一時停止";$("btnPause").classList.remove("on");setStatus("聞き取り中","live");}
+};
 function resetUI(){
   ["logM","logP"].forEach(i=>$(i).innerHTML="");
   $("latest").innerHTML='<span class="empty">まだ発言はありません</span>';
@@ -366,7 +377,7 @@ function openDg(role,stream,diarize){
   const ratio=audioCtx.sampleRate/16000;
   let ws=null,ka=null,closed=false,retry=0,retryTimer=null;
   proc.onaudioprocess=ev=>{
-    if(!ws||ws.readyState!==1)return;
+    if(!ws||ws.readyState!==1||paused)return;
     const inp=ev.inputBuffer.getChannelData(0);
     const n=Math.floor(inp.length/ratio),out=new Int16Array(n);
     for(let i=0;i<n;i++){const a=Math.floor(i*ratio),b=Math.min(inp.length,Math.floor((i+1)*ratio));let s=0;for(let j=a;j<b;j++)s+=inp[j];const v=s/Math.max(1,b-a);out[i]=Math.max(-1,Math.min(1,v))*32767;}
@@ -400,7 +411,7 @@ function openDg(role,stream,diarize){
 window.addEventListener("online",()=>{if(running)toast("ネットワークが復帰しました")});
 window.addEventListener("offline",()=>{if(running)toast("ネットワークが切れました。復帰後に自動で再接続します")});
 function onDg(role,m){
-  if(m.type!=="Results")return;
+  if(m.type!=="Results"||paused)return;
   const alt=m.channel?.alternatives?.[0];if(!alt||!alt.transcript)return;
   if(!m.is_final){if(role!=="self")showInterim(alt.transcript);return}
   const groups=[];
@@ -493,7 +504,7 @@ async function runCue(){
 {"needs_reply":true/false（相手が自分に質問・依頼・相談・判断を求めている＝true。説明や独白の途中、雑談＝false）,
  "intent":"相手が本当に言いたいこと・求めていることを1行（30文字以内）",
  "say":["自分がそのまま口に出せる第一声（45文字以内）","別の切り返しか補足の一言（45文字以内）"],
- "ask":"相手に確認すべき一言。不要ならnull",
+ "ask":"相手に確認すべき一言（40文字以内）。不要ならnull",
  "flag":"前提メモの警戒事項に触れている・即決してはいけない場合の注意1行。なければnull"}
 ・needs_replyがfalseのときは say は相槌か短い受け止め1つだけでよい（2つ目は空でよい）
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
