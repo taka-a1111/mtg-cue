@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17e -->
+<!-- BUILD_TAG: 2026-09-17f -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.4 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.5 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -63,7 +63,7 @@ input,select,textarea{font-family:inherit}
 
 /* カンペ本体 */
 .note{background:var(--note);color:var(--note-ink);border-radius:6px 6px 14px 6px;padding:14px 16px 12px;
-  box-shadow:0 8px 24px rgba(0,0,0,.35);position:relative;min-height:120px;overflow-wrap:anywhere}
+  box-shadow:0 8px 24px rgba(0,0,0,.35);position:sticky;top:0;z-index:3;min-height:120px;overflow-wrap:anywhere}
 .note::before{content:"";position:absolute;left:14px;right:14px;top:-6px;height:12px;background:rgba(0,0,0,.08);border-radius:2px}
 .note .intent{font-size:14px;color:var(--note-dim);margin-bottom:8px;line-height:1.45}
 .note .say{font-size:21px;font-weight:700;line-height:1.5;margin-bottom:8px}
@@ -90,7 +90,9 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 .card.deep ul.pts li::before{background:var(--ok)}
 .card.alert ul.pts li::before{background:var(--warn)}
 
-.log{display:flex;flex-direction:column;gap:4px}
+.log{display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:42vh;overscroll-behavior:contain}
+.col.right .card{display:flex;flex-direction:column;min-height:0;flex:1}
+.col.right .log{flex:1;max-height:none;min-height:0}
 .log .line{font-size:14px;line-height:1.5;padding:6px 10px;border-radius:10px;background:var(--panel2)}
 .log .line.me{background:transparent;color:var(--self);font-size:13px}
 .log .line .who{font-size:11px;color:var(--muted);margin-right:6px}
@@ -225,7 +227,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.4 / BUILD_TAG 2026-09-17e</div>
+  <div class="foot">mtg_cue ver1.5 / BUILD_TAG 2026-09-17f</div>
 </div></div>
 
 <!-- 議事録 -->
@@ -238,7 +240,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17e");
+console.log("BUILD_TAG: 2026-09-17f");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -463,7 +465,7 @@ function renderLog(){
       log.appendChild(d);}
   });scrollLogs();
 }
-function scrollLogs(){document.querySelectorAll(".col").forEach(c=>{if(c.scrollHeight-c.scrollTop-c.clientHeight<260)c.scrollTop=c.scrollHeight})}
+function scrollLogs(){logEls().forEach(c=>{if(c.scrollHeight-c.scrollTop-c.clientHeight<200)c.scrollTop=c.scrollHeight})}
 function renderLatest(){
   const o=entries.filter(e=>e.role==="other");if(!o.length)return;
   const last=o.slice(-2);
