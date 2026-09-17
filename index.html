@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17j -->
+<!-- BUILD_TAG: 2026-09-17k -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.9 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.10 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -241,7 +241,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.9 / BUILD_TAG 2026-09-17j</div>
+  <div class="foot">mtg_cue ver1.10 / BUILD_TAG 2026-09-17k</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -262,7 +262,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17j");
+console.log("BUILD_TAG: 2026-09-17k");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -438,7 +438,7 @@ function tick(){const s=Math.floor((Date.now()-t0)/1000);
 /* ================= Deepgram 接続 ================= */
 function openDg(role,stream,diarize){ return cfg.stt==="openai"?openOpenAI(role,stream):openDeepgram(role,stream,diarize) }
 function openOpenAI(role,stream){
-  const url="wss://api.openai.com/v1/realtime?intent=transcription";
+  const urls=["wss://api.openai.com/v1/realtime","wss://api.openai.com/v1/realtime?intent=transcription"];let ui=0;
   const hint=(cfg.keyterms||"").split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).join("、");
   const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
   const src=audioCtx.createMediaStreamSource(stream);
@@ -462,12 +462,12 @@ function openOpenAI(role,stream){
       input_audio_transcription:{model:"gpt-4o-transcribe",language:"ja",prompt:hint?("会議の文字起こし。用語："+hint):"日本語の会議の文字起こし"},
       turn_detection:{type:"server_vad",threshold:0.5,prefix_padding_ms:300,silence_duration_ms:500},input_audio_noise_reduction:{type:"near_field"}}});
   function connect(){
-    ws=new WebSocket(url,["realtime","openai-insecure-api-key."+cfg.oaKey,"openai-beta.realtime-v1"]);
+    ws=new WebSocket(urls[ui],["realtime","openai-insecure-api-key."+cfg.oaKey]);
     ws.onopen=()=>{logd("oa open",role);ready=false;fallback=false;ws.send(JSON.stringify(sessGA()));
       if(retry>0){toast("再接続しました");if(running)setStatus("聞き取り中（再接続済み）","live")}retry=0;};
     ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
       if(m.type==="error"){const msg=m.error?.message||"";logd("oa error",role,msg.slice(0,200));
-        if(!fallback&&!ready){fallback=true;ws.send(JSON.stringify(sessBeta()));return}
+        if(!ready&&ui<urls.length-1){ui++;logd("oa switch url",ui);try{ws.close()}catch(_){}return}
         if(!ready){toast("OpenAIに接続できません: "+msg.slice(0,80));stop();return}
         return;}
       if(m.type==="session.updated"||m.type==="transcription_session.updated"||m.type==="session.created"){ logd("oa",role,m.type); if(m.type!=="session.created")ready=true; return;}
