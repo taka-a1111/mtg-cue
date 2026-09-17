@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17a -->
+<!-- BUILD_TAG: 2026-09-17b -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.0 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.1 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -71,6 +71,12 @@ input,select,textarea{font-family:inherit}
 .note .ask::before{content:"確認：";color:var(--note-dim)}
 .note .stamp{position:absolute;right:12px;top:10px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
 .note .waiting{font-size:15px;color:var(--note-dim);padding:12px 0}
+.calbox{display:none;margin-top:10px;gap:8px;flex-wrap:wrap}
+.calbox.on{display:flex}
+.calbox button{padding:12px 16px;font-weight:700;font-size:15px}
+.calbox .reg{background:#b8860b;color:#fff}.calbox .reg.rec{background:#c0392b}
+.calbox .skip{background:#5c5340;color:#fff}
+.calbox p{width:100%;font-size:14px;color:var(--note-ink);line-height:1.5}
 
 .latest{font-size:18px;line-height:1.5;font-weight:500;min-height:2.6em}
 .latest .old{display:block;color:var(--muted);font-weight:400;font-size:14px;margin-bottom:4px}
@@ -135,6 +141,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
     <div class="note" id="note">
       <span class="stamp" id="noteStamp"></span>
       <div class="waiting" id="noteWait">相手が話し始めると、ここにカンペが出ます。</div>
+      <div class="calbox" id="calbox"><p id="calMsg">まず自分の声を登録します。「登録開始」を押して5〜10秒ほど普通に話し、「登録完了」を押してください。</p><button class="reg" id="btnCal">登録開始</button><button class="skip" id="btnCalSkip">登録しない（全部相手）</button></div>
       <div class="intent" id="nIntent" style="display:none"></div>
       <div class="say" id="nSay" style="display:none"></div>
       <div class="say2" id="nSay2" style="display:none"></div>
@@ -199,7 +206,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
     <div class="f"><label>文字起こしモデル</label>
       <select id="dgModel"><option value="nova-3|multi">nova-3 / multi</option><option value="nova-2|ja">nova-2 / ja</option></select>
       <small>日本語が崩れるときは nova-2 / ja に切り替え</small></div>
-    <div class="f"><label>声の登録時間（秒）※スマホ時</label><input id="calSec" type="number" value="15" min="5" max="60"></div>
+    <div class="f"><label>用語リスト（カンマ区切り、nova-3のみ）</label><input id="keyterms" placeholder="例: 柔整ガイド, ジーニー, SWELL"><small>人名・会社名・専門用語を入れると認識を強化（最大100語）</small></div>
   </div>
   <div class="row">
     <div class="f"><label>カンペを出す間（相手が黙ってから秒）</label><input id="pause" type="number" value="2" min="1" max="6" step="0.5"></div>
@@ -212,7 +219,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.0 / BUILD_TAG 2026-09-17a</div>
+  <div class="foot">mtg_cue ver1.1 / BUILD_TAG 2026-09-17b</div>
 </div></div>
 
 <!-- 議事録 -->
@@ -225,7 +232,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17a");
+console.log("BUILD_TAG: 2026-09-17b");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -239,11 +246,11 @@ const $=id=>document.getElementById(id);
 const S={
   load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
     $("dgKey").value=s.dgKey||""; $("aKey").value=s.aKey||""; $("dgModel").value=s.dgModel||"nova-3|multi";
-    $("calSec").value=s.calSec||15; $("pause").value=s.pause||2; $("interval").value=s.interval||60;
+    $("keyterms").value=s.keyterms||""; $("pause").value=s.pause||2; $("interval").value=s.interval||60;
     $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
     $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode};},
   save(){const s={mode:curMode,dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
-    calSec:+$("calSec").value||15,pause:+$("pause").value||2,interval:+$("interval").value||60,
+    keyterms:$("keyterms").value.trim(),pause:+$("pause").value||2,interval:+$("interval").value||60,
     mFast:$("mFast").value.trim(),mSmart:$("mSmart").value.trim(),memo:$("memo").value};
     localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
 };
@@ -267,13 +274,13 @@ let running=false, conns=[], streams=[], wakeLock=null;
 let t0=0, clockTimer=null, sumTimer=null, cueTimer=null, cueBusy=false, cueDirty=false, deepBusy=false;
 let entries=[];            // {t, role:'self'|'other', spk, text}
 let selfSpk=null;          // phoneモードの自分の話者番号
-let calChars={};
+let calChars={},calibrating=false,calDone=false;
 let summaryPts=[], lastCueAt=0;
 
 /* ================= 開始・停止 ================= */
 async function start(){
   if(!cfg.dgKey||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
-  entries=[];selfSpk=null;calChars={};summaryPts=[];lastCueAt=0;cueDirty=false;
+  entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc");summaryPts=[];lastCueAt=0;cueDirty=false;
   resetUI();
   try{
     if(cfg.mode==="pc"){
@@ -294,7 +301,8 @@ async function start(){
   $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").disabled=true;
   clockTimer=setInterval(tick,1000);
   sumTimer=setInterval(refreshSummary,cfg.interval*1000);
-  setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"声の登録中。まず自分が数秒話してください。",cfg.mode==="pc"?"live":"cal");
+  setStatus(cfg.mode==="pc"?"聞き取り中（タブ音声＝相手／マイク＝自分）":"自分の声を登録してください。","live");
+  if(cfg.mode!=="pc"){$("calbox").classList.add("on");$("noteWait").style.display="none"}
   try{wakeLock=await navigator.wakeLock?.request("screen")}catch(_){}
 }
 function stop(){
@@ -312,20 +320,21 @@ function resetUI(){
   $("latest").innerHTML='<span class="empty">まだ発言はありません</span>';
   $("summary").innerHTML='<li class="empty">会話が進むと自動で更新されます</li>';
   $("alertCard").style.display="none";$("deepCard").style.display="none";
-  $("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
+  $("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
   const h=cfg.mode==="pc"?"薄い行は自分の発言。":"薄い行は自分の発言（AIには「自分」として渡します）。行を長押し（PCは右クリック）で「これは自分の声」に切り替えられます。";
   $("hintM").textContent=h;$("hintP").textContent=h;
 }
 function setStatus(msg,mode){$("status").textContent=msg;$("dot").className="dot"+(mode?" "+mode:"")}
 function tick(){const s=Math.floor((Date.now()-t0)/1000);
   $("clock").textContent=String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
-  if(cfg.mode!=="pc"&&selfSpk===null&&s>=cfg.calSec)finishCalibration();}
+}
 
 /* ================= Deepgram 接続 ================= */
 function openDg(role,stream,diarize){
   const [model,lang]=cfg.dgModel.split("|");
   const url=`wss://api.deepgram.com/v1/listen?model=${model}&language=${lang}&diarize=${diarize}&smart_format=true&interim_results=true&endpointing=400&encoding=linear16&sample_rate=16000&channels=1`;
-  const ws=new WebSocket(url,["token",cfg.dgKey]);
+  const kt=(model==="nova-3"&&cfg.keyterms)?cfg.keyterms.split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).slice(0,100).map(x=>"&keyterm="+encodeURIComponent(x)).join(""):"";
+  const ws=new WebSocket(url+kt,["token",cfg.dgKey]);
   let audioCtx,proc,ka;
   ws.onopen=()=>{
     audioCtx=new (window.AudioContext||window.webkitAudioContext)();
@@ -362,19 +371,27 @@ function onDg(role,m){
     const text=g.words.join("").trim();if(!text)continue;
     const r=role==="mix"?(selfSpk!==null&&g.spk===selfSpk?"self":"other"):role;
     entries.push({t,role:r,spk:g.spk,text});
-    if(role==="mix"&&selfSpk===null)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
+    if(role==="mix"&&calibrating)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
     if(r==="other")gotOther=true;
   }
   removeInterim();renderLog();renderLatest();
-  if(gotOther&&(cfg.mode==="pc"||selfSpk!==null))scheduleCue();
+  if(gotOther&&calDone)scheduleCue();
 }
 function finishCalibration(){
-  const ks=Object.keys(calChars);if(!ks.length)return;
-  selfSpk=+ks.sort((a,b)=>calChars[b]-calChars[a])[0];
+  const ks=Object.keys(calChars);
+  if(!ks.length){toast("声が拾えていません。もう一度「登録開始」を押して話してください");calibrating=false;$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");return}
+  selfSpk=+ks.sort((a,b)=>calChars[b]-calChars[a])[0];calibrating=false;calDone=true;
   entries.forEach(e=>{e.role=e.spk===selfSpk?"self":"other"});
-  setStatus(`聞き取り中。自分＝話者${selfSpk} として扱います。`,"live");renderLog();renderLatest();
+  $("calbox").classList.remove("on");$("noteWait").style.display="";
+  setStatus(`聞き取り中。自分＝話者${selfSpk} として除外します。`,"live");renderLog();renderLatest();
 }
-function reassignSelf(spk){selfSpk=spk;entries.forEach(e=>{e.role=e.spk===spk?"self":"other"});
+$("btnCal").onclick=()=>{
+  if(!calibrating){calibrating=true;calChars={};$("btnCal").textContent="登録完了";$("btnCal").classList.add("rec");$("calMsg").textContent="登録中。普通の声で話してください（5〜10秒）。話し終えたら「登録完了」。";}
+  else finishCalibration();
+};
+$("btnCalSkip").onclick=()=>{calibrating=false;calDone=true;selfSpk=null;$("calbox").classList.remove("on");$("noteWait").style.display="";
+  entries.forEach(e=>e.role="other");setStatus("聞き取り中（全員を相手として扱います）","live");renderLog();renderLatest();};
+function reassignSelf(spk){selfSpk=spk;calDone=true;calibrating=false;$("calbox").classList.remove("on");$("noteWait").style.display="";entries.forEach(e=>{e.role=e.spk===spk?"self":"other"});
   setStatus(`自分＝話者${spk} に変更しました。`,"live");renderLog();renderLatest();}
 
 /* ================= 表示 ================= */
