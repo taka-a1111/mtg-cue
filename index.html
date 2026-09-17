@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17i -->
+<!-- BUILD_TAG: 2026-09-17j -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.8 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.9 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -239,8 +239,9 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
+  <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.8 / BUILD_TAG 2026-09-17i</div>
+  <div class="foot">mtg_cue ver1.9 / BUILD_TAG 2026-09-17j</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -261,7 +262,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17i");
+console.log("BUILD_TAG: 2026-09-17j");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -284,6 +285,7 @@ const S={
     localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
 };
 let curMode="phone",curStt="deepgram";
+const dbg=[];function logd(...a){const line=new Date().toLocaleTimeString("ja-JP")+" "+a.map(x=>typeof x==="string"?x:JSON.stringify(x)).join(" ");dbg.push(line);if(dbg.length>60)dbg.shift();console.log("[mtg-cue]",...a);const el=document.getElementById("dbgBox");if(el)el.textContent=dbg.slice(-25).join("\n")}
 function setStt(v){curStt=v;[...$("sttSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v));
   $("sttHint").textContent=v==="openai"
    ?"日本語に強い。話者分離がないので、スマホモードでは全員を相手として扱います（自分の声の除外は不可）。PCモードはタブ音声＝相手／マイク＝自分で分離できます。"
@@ -381,6 +383,7 @@ async function start(){
       if(!disp.getAudioTracks().length){disp.getTracks().forEach(t=>t.stop());toast("音声が共有されていません。「音声を共有」にチェックして選び直してください。");return}
       streams.push(disp);
       disp.getVideoTracks()[0].onended=()=>{if(running)stop()};
+      logd("display audio track",disp.getAudioTracks()[0].getSettings());
       conns.push(openDg("other",new MediaStream(disp.getAudioTracks()),true));
       try{const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
         streams.push(mic);conns.push(openDg("self",mic,false));}
@@ -460,17 +463,19 @@ function openOpenAI(role,stream){
       turn_detection:{type:"server_vad",threshold:0.5,prefix_padding_ms:300,silence_duration_ms:500},input_audio_noise_reduction:{type:"near_field"}}});
   function connect(){
     ws=new WebSocket(url,["realtime","openai-insecure-api-key."+cfg.oaKey,"openai-beta.realtime-v1"]);
-    ws.onopen=()=>{ready=false;fallback=false;ws.send(JSON.stringify(sessGA()));
+    ws.onopen=()=>{logd("oa open",role);ready=false;fallback=false;ws.send(JSON.stringify(sessGA()));
       if(retry>0){toast("再接続しました");if(running)setStatus("聞き取り中（再接続済み）","live")}retry=0;};
     ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
-      if(m.type==="error"){const msg=m.error?.message||"";
+      if(m.type==="error"){const msg=m.error?.message||"";logd("oa error",role,msg.slice(0,200));
         if(!fallback&&!ready){fallback=true;ws.send(JSON.stringify(sessBeta()));return}
         if(!ready){toast("OpenAIに接続できません: "+msg.slice(0,80));stop();return}
         return;}
-      if(m.type==="session.updated"||m.type==="transcription_session.updated"||m.type==="session.created"){ if(m.type!=="session.created")ready=true; return;}
+      if(m.type==="session.updated"||m.type==="transcription_session.updated"||m.type==="session.created"){ logd("oa",role,m.type); if(m.type!=="session.created")ready=true; return;}
+      if(!/delta|append/.test(m.type))logd("oa",role,m.type);
       onOa(role,m);};
-    ws.onerror=()=>{};
+    ws.onerror=()=>{logd("oa ws error",role)};
     ws.onclose=ev=>{
+      logd("oa close",role,ev.code,(ev.reason||"").slice(0,120));
       if(closed||!running)return;
       if(retry>=10){toast("文字起こしの再接続に失敗しました。停止します。");stop();return}
       retry++;const wait=Math.min(15000,1000*Math.pow(2,retry-1));
@@ -522,7 +527,7 @@ function openDeepgram(role,stream,diarize){
     ws.onmessage=e=>{try{onDg(role,JSON.parse(e.data))}catch(_){}};
     ws.onerror=()=>{};
     ws.onclose=ev=>{
-      clearInterval(ka);
+      clearInterval(ka);logd("dg close",role,ev.code,(ev.reason||"").slice(0,120));
       if(closed||!running)return;
       if(ev.code===1008||ev.code===4001){toast("Deepgramに接続できません。キーとモデルを確認してください。");stop();return}
       if(retry>=10){toast("文字起こしの再接続に失敗しました。停止します。");stop();return}
