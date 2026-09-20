@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-17l -->
+<!-- BUILD_TAG: 2026-09-20a -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.11 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.12 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -237,15 +237,27 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
     <div class="f"><label>カンペ・要点モデル（速い）</label><input id="mFast" value="claude-haiku-4-5-20251001"></div>
     <div class="f"><label>深掘り・議事録モデル（賢い）</label><input id="mSmart" value="claude-sonnet-5"></div>
   </div>
+  <div class="f"><label>Jev判定（TypeSafe AI）</label>
+    <div class="seg" id="jevSeg"><button data-v="off">使わない</button><button data-v="on">使う</button></div>
+    <small>相手の発言ごとにJevが種類と必要度を判定し、必要なときだけClaudeを呼びます。未設定・エラー時は従来どおり毎回Claudeを呼びます。</small></div>
+  <div class="row">
+    <div class="f"><label>TypeSafe APIキー</label><input id="jevKey" type="password" autocomplete="off"><small>Vercelの環境変数 TYPESAFE_API_KEY を設定している場合は空欄でよい</small></div>
+    <div class="f"><label>中継URL</label><input id="jevRelay" placeholder="/api/jev"><small>ブラウザから直接は呼べないため同一オリジンの中継を経由。既定は /api/jev</small></div>
+  </div>
+  <div class="row">
+    <div class="f"><label>カンペを出す必要度のしきい値：<span id="thVal">2</span> 以上</label><input id="jevTh" type="range" min="0" max="4" step="1" value="2" style="padding:0"><small>0=常に出す　4=ほぼ出さない。判定が割れたときは安全側に倒してClaudeを呼びます</small></div>
+    <div class="f"><label>TypeSafeのベースURL（既定でよい）</label><input id="jevBase" placeholder="https://api.typesafe.ai"></div>
+  </div>
   <div class="row">
     <div class="f"><label>Googleドライブ保存（GASウェブアプリのURL）</label><input id="gasUrl" placeholder="https://script.google.com/macros/s/…/exec"><small>空欄なら保存しない。停止時と議事録作成時に自動でドライブの「mtg-cue」フォルダへ保存</small></div>
     <div class="f"><label>保存トークン（GAS側と同じ合言葉）</label><input id="gasToken" type="password" autocomplete="off"></div>
   </div>
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
+  <div class="f"><label>Jevの判定ログ（発言ごとの種類・必要度・確信度・応答時間）</label><pre id="jevBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:240px;overflow:auto;color:var(--muted)">まだ判定はありません</pre></div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.11 / BUILD_TAG 2026-09-17l</div>
+  <div class="foot">mtg_cue ver1.12 / BUILD_TAG 2026-09-20a</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -266,7 +278,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-17l");
+console.log("BUILD_TAG: 2026-09-20a");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -280,11 +292,11 @@ const $=id=>document.getElementById(id);
 const S={
   load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
     $("dgKey").value=s.dgKey||""; $("oaKey").value=s.oaKey||""; $("aKey").value=s.aKey||""; setStt(s.stt||"deepgram"); $("dgModel").value=s.dgModel||"nova-3|multi";
-    $("keyterms").value=s.keyterms||"";$("gasUrl").value=s.gasUrl||"";$("gasToken").value=s.gasToken||""; $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
+    $("keyterms").value=s.keyterms||"";$("gasUrl").value=s.gasUrl||"";$("gasToken").value=s.gasToken||"";$("jevKey").value=s.jevKey||"";$("jevRelay").value=s.jevRelay||"/api/jev";$("jevBase").value=s.jevBase||"";$("jevTh").value=(s.jevTh??2);$("thVal").textContent=(s.jevTh??2);setJev(s.jev||"off"); $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
     $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
-    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode,stt:curStt};},
+    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode,stt:curStt,jev:curJev};},
   save(){const s={mode:curMode,stt:curStt,oaKey:$("oaKey").value.trim(),dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
-    keyterms:$("keyterms").value.trim(),gasUrl:$("gasUrl").value.trim(),gasToken:$("gasToken").value.trim(),pause:+$("pause").value||2,interval:+$("interval").value||60,
+    keyterms:$("keyterms").value.trim(),gasUrl:$("gasUrl").value.trim(),gasToken:$("gasToken").value.trim(),jev:curJev,jevKey:$("jevKey").value.trim(),jevRelay:$("jevRelay").value.trim()||"/api/jev",jevBase:$("jevBase").value.trim(),jevTh:+$("jevTh").value,pause:+$("pause").value||2,interval:+$("interval").value||60,
     mFast:$("mFast").value.trim(),mSmart:$("mSmart").value.trim(),memo:$("memo").value};
     localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
 };
@@ -295,6 +307,10 @@ function setStt(v){curStt=v;[...$("sttSeg").children].forEach(b=>b.classList.tog
    ?"日本語に強い。話者分離がないので、スマホモードでは全員を相手として扱います（自分の声の除外は不可）。PCモードはタブ音声＝相手／マイク＝自分で分離できます。"
    :"話者分離あり。スマホモードで自分の声を除外できます。日本語の精度はやや落ちます。";}
 $("sttSeg").onclick=e=>{const b=e.target.closest("button");if(b)setStt(b.dataset.v)};
+let curJev="off";
+function setJev(v){curJev=v;[...$("jevSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v))}
+$("jevSeg").onclick=e=>{const b=e.target.closest("button");if(b)setJev(b.dataset.v)};
+$("jevTh").oninput=e=>{$("thVal").textContent=e.target.value};
 function hasDisplayAudio(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia)&&!/Android|iPhone|iPad/i.test(navigator.userAgent)}
 function setMode(m){curMode=m;[...$("modeSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===m));
   $("modeHint").textContent=m==="pc"
@@ -315,10 +331,10 @@ let t0=0, clockTimer=null, sumTimer=null, cueTimer=null, cueBusy=false, cueDirty
 let entries=[];            // {t, role:'self'|'other', spk, text}
 let selfSpk=null;          // phoneモードの自分の話者番号
 let calChars={},calibrating=false,calDone=false;
-let summaryPts=[], lastCueAt=0, lastNote=null, startedAt=null, saveTimer=null;
+let summaryPts=[], lastCueAt=0, lastNote=null, startedAt=null, saveTimer=null, tags=[];
 /* ---- 自動保存・復元 ---- */
 function saveSession(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{
-  localStorage.setItem("mc_session",JSON.stringify({v:1,startedAt,elapsed:t0?Date.now()-t0:0,mode:cfg.mode,entries,selfSpk,calDone,summaryPts,lastNote,savedAt:Date.now()}));
+  localStorage.setItem("mc_session",JSON.stringify({v:1,startedAt,elapsed:t0?Date.now()-t0:0,mode:cfg.mode,entries,selfSpk,calDone,summaryPts,lastNote,tags,jevLog,savedAt:Date.now()}));
 }catch(e){}},1500)}
 function clearSession(){try{localStorage.removeItem("mc_session")}catch(_){}}
 let minutesText="";
@@ -338,6 +354,7 @@ async function saveToDrive(reason){
   if(driveBusy)return;driveBusy=true;
   const payload={token:cfg.gasToken||"",id:String(startedAt||t0),title:sessionTitle(),startedAt:startedAt||Date.now(),elapsed:t0?Date.now()-t0:0,
     summary:summaryPts,minutes:minutesText,memo:cfg.memo,
+    tags:tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n"),
     transcript:entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")};
   try{
     const r=await fetch(cfg.gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
@@ -376,7 +393,7 @@ $("btnHistClose").onclick=()=>$("histSheet").classList.remove("open");
 function restoreSession(){
   let d;try{d=JSON.parse(localStorage.getItem("mc_session")||"null")}catch(_){}
   if(!d||!d.entries||!d.entries.length)return false;
-  entries=d.entries;selfSpk=d.selfSpk??null;calDone=!!d.calDone;summaryPts=d.summaryPts||[];lastNote=d.lastNote||null;startedAt=d.startedAt||null;
+  entries=d.entries;selfSpk=d.selfSpk??null;calDone=!!d.calDone;summaryPts=d.summaryPts||[];lastNote=d.lastNote||null;tags=d.tags||[];jevLog=d.jevLog||[];renderJevLog();startedAt=d.startedAt||null;
   t0=Date.now()-(d.elapsed||0);
   renderLog();renderLatest();
   if(summaryPts.length)$("summary").innerHTML=summaryPts.map(x=>`<li>${esc(x)}</li>`).join("");
@@ -394,7 +411,7 @@ async function start(){
   if(!sttKeyOk||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
   if(entries.length&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
-  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;startedAt=Date.now();clearSession();resetUI();}
+  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
@@ -667,6 +684,53 @@ function stamp(t){return `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStar
 function transcriptText(n){return entries.slice(-n).map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}
 
 /* 常時カンペ：相手が黙って pause 秒たったら1回 */
+/* ================= Jev（判定専用モデル） ================= */
+const JEV_KINDS={question:"質問（こちらの回答が必要）",concern:"懸念・反論",negotiation:"条件交渉（金額・納期・範囲）",request:"依頼・宿題の発生",decision:"決定事項の確認",smalltalk:"相槌・雑談",self:"自分側の発言"};
+const JEV_HINT={
+  question:"相手は答えを待っている。結論を先に一文で答える案を出す。",
+  concern:"相手は不安か反対を示している。不安の中身を言い当て、根拠を添えて解消する言い方を出す。",
+  negotiation:"金額・納期・作業範囲の交渉。前提メモの希望条件の範囲で、譲れる線と切り返しを出す。即答で数字を約束しない。",
+  request:"新しい依頼や宿題が発生している。引き受ける範囲と、確認すべき条件（期日・範囲・見積）を出す。",
+  decision:"決定事項の確認。前提メモにある決定済み事項と日付を添えて確認する言い方を出す。",
+  smalltalk:"雑談か相槌。短い受け止めだけでよい。",
+  self:"自分側の発言。カンペは不要。"};
+let jevLog=[],jevFails=0,jevOffThisSession=false,lastKind=null;
+function renderJevLog(){const el=$("jevBox");if(!el)return;
+  el.textContent=jevLog.length?jevLog.slice(-30).map(j=>
+    `${j.time} ${j.called?"→Claude":"　見送り"} ${JEV_KINDS[j.kind]||j.kind} 必要度${j.need}(確信${j.conf}) ${j.ms}ms\n　　「${j.text}」`).join("\n"):"まだ判定はありません";}
+async function jevJudge(text){
+  const t0=performance.now();
+  const relay=cfg.jevRelay||"/api/jev";
+  const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),1500);
+  const headers={"Content-Type":"application/json"};
+  if(cfg.jevKey)headers["x-ts-key"]=cfg.jevKey;
+  if(cfg.jevBase)headers["x-ts-base"]=cfg.jevBase;
+  const state={"会議の前提":(cfg.memo||"").slice(0,4000),"直近の会話":transcriptText(10),"判定対象の発言":text};
+  const body={model:"jev-latest",state,questions:{
+    kind:{type:"choice",instructions:"判定対象の発言は、会議の中でどの種類の発言か。",criteria:{
+      question:"自分に対する質問で、こちらの回答を待っている",
+      concern:"懸念、不満、反論を述べている",
+      negotiation:"金額、納期、作業範囲などの条件を交渉している",
+      request:"新しい依頼や宿題が発生している",
+      decision:"すでに決まったことを確認している",
+      smalltalk:"相槌、雑談、独り言、説明の途中",
+      self:"自分（こちら側）の発言"}},
+    need:{type:"score",instructions:"この発言に対して、自分が今すぐ口に出す言葉（カンペ）はどれくらい必要か。",
+      criteria:["全く不要。相槌だけでよい","ほぼ不要","あると助かる","必要","必ず必要。答えないと会議が止まる"]},
+    hard:{type:"noul",instructions:"この発言への返答には、金額・契約・作業範囲の判断や、慎重な言い回しが必要か。"}}};
+  const r=await fetch(relay,{method:"POST",headers,body:JSON.stringify(body),signal:ctl.signal});
+  clearTimeout(to);
+  if(!r.ok)throw new Error("jev "+r.status+": "+(await r.text()).slice(0,120));
+  const d=await r.json();
+  const a=d.answers||{};
+  const ms=Math.round(performance.now()-t0);
+  const kind=a.kind?.choice||"question";
+  const kconf=a.kind?.confidence??0;
+  const need=a.need?.score??4;
+  const nconf=a.need?.confidence??0;
+  const hard=a.hard?.noul??0.5;
+  return {kind,kconf,need,nconf,hard,ms};
+}
 let cueAbort=null;
 function scheduleCue(delay){cueDirty=true;clearTimeout(cueTimer);
   if(cueBusy&&cueAbort){cueAbort.abort();} // 作りかけは捨てて最新の発言で作り直す
@@ -676,9 +740,30 @@ async function runCue(){
   if(cueBusy){cueTimer=setTimeout(runCue,300);return}
   cueBusy=true;cueDirty=false;$("dot").className="dot think";
   const ac=new AbortController();cueAbort=ac;let shown=false;
+
+  // --- Jev判定（使う設定のときだけ。失敗は握りつぶして従来動作に戻す） ---
+  let kind=null,useSmart=false;
+  const lastOther=[...entries].reverse().find(e=>e.role==="other");
+  if(cfg.jev==="on"&&!jevOffThisSession&&lastOther){
+    try{
+      const j=await jevJudge(lastOther.text);
+      const low=(j.kconf<0.4||j.nconf<0.4);            // 判定が割れたら安全側
+      const call=(j.need>=(cfg.jevTh??2))||low;
+      jevLog.push({time:$("clock").textContent,kind:j.kind,need:j.need.toFixed(1),conf:j.kconf.toFixed(2),ms:j.ms,called:call,text:lastOther.text.slice(0,40)});
+      renderJevLog();logd("jev",j.kind,"need="+j.need.toFixed(1),"conf="+j.kconf.toFixed(2),j.ms+"ms",call?"→Claude":"見送り");
+      jevFails=0;
+      if(j.kind==="request"||j.kind==="decision")tags.push({t:lastOther.t,kind:j.kind,text:lastOther.text});
+      kind=j.kind;useSmart=(j.hard>0.6&&j.need>=3);
+      if(!call){ cueBusy=false;if(running)$("dot").className="dot live"; if(cueDirty)scheduleCue(0); return; }
+    }catch(e){
+      jevFails++;logd("jev error",String(e.message||e));
+      if(jevFails>=3){jevOffThisSession=true;toast("Jev判定を停止し、従来どおり毎回カンペを出します")}
+    }
+  }
+
   try{
-    const txt=await claudeStream(cfg.mFast,
-`あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。
+    const txt=await claudeStream(useSmart?cfg.mSmart:cfg.mFast,
+`あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。${kind?"\n今の相手の発言は「"+JEV_KINDS[kind]+"」と判定されています。"+JEV_HINT[kind]:""}
 相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の6行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。
 返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
 一言: 自分がそのまま口に出せる第一声（45文字以内。不要のときは相槌か短い受け止め）
@@ -732,8 +817,8 @@ $("btnMin").onclick=async()=>{
 ・項目は「概要」「決まったこと」「相手からの要望・条件」「自分の回答・保留にしたこと」「次のアクション（誰が・いつまでに）」「確認が必要なこと」の順。該当する内容がない項目は見出しごと省く。「記載なし」「確認できず」のような空欄の説明は書かない
 ・冒頭に日付・参加者を1〜2行で書く（前提メモに相手の名前があればそれを使う。日付は${new Date().toLocaleDateString("ja-JP")}）
 ・書き起こしの誤変換は文脈と前提メモから正しい語に直す。事実と推測を混ぜず、推測は「〜と思われる」と書く
-・全体で600〜1000字程度`,
-`【前提メモ】\n${cfg.memo}\n\n【会話（全文）】\n${entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}`,1800);
+・「会議中に検出された依頼・決定事項」は見落としを防ぐための手がかり。該当する項目に反映し、書き起こしと食い違う場合は書き起こしを優先する\n・全体で600〜1000字程度`,
+`【前提メモ】\n${cfg.memo}\n\n【会議中に検出された依頼・決定事項】\n${tags.length?tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n"):"（なし）"}\n\n【会話（全文）】\n${entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")}`,1800);
     $("minText").value=txt.trim();minutesText=txt.trim();$("minSheet").classList.add("open");archiveSession();saveToDrive("議事録");
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus("停止中","");
