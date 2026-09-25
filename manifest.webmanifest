@@ -1,0 +1,20 @@
+{
+  "name": "会議カンペ",
+  "short_name": "カンペ",
+  "description": "オンライン会議中に、相手の発言を読み取って今言うべきことをカンペで出すツール",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1b2028",
+  "theme_color": "#1b2028",
+  "lang": "ja",
+  "dir": "ltr",
+  "categories": ["productivity", "business"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
