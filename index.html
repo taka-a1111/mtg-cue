@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-25a -->
+<!-- BUILD_TAG: 2026-09-28a -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.14 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.15 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -261,9 +261,13 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="f"><label>会議の前提（AIに渡すメモ）</label><textarea id="memo"></textarea>
     <small>相手・目的・自分の希望条件・警戒したい点・言い回しの癖（丁寧め／砕けめ）を書いておくと、その前提でカンペが出ます。会議ごとに書き換えてください。</small></div>
   <div class="f"><label>Jevの判定ログ（発言ごとの種類・必要度・確信度・応答時間）</label><pre id="jevBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:240px;overflow:auto;color:var(--muted)">まだ判定はありません</pre></div>
+  <div class="f"><label>応答速度の計測（相手の発話が確定してからカンペが出るまで）</label>
+    <pre id="latBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:260px;overflow:auto;color:var(--muted)">まだ計測はありません</pre>
+    <div style="display:flex;gap:8px;margin-top:8px"><button id="btnLatCopy" style="flex:1;padding:10px;font-size:14px">計測結果をコピー</button><button id="btnLatClear" style="flex:1;padding:10px;font-size:14px">計測をリセット</button></div>
+  </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.14 / BUILD_TAG 2026-09-25a</div>
+  <div class="foot">mtg_cue ver1.15 / BUILD_TAG 2026-09-28a</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -284,7 +288,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-25a");
+console.log("BUILD_TAG: 2026-09-28a");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -417,7 +421,7 @@ async function start(){
   if(!sttKeyOk||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
   if(entries.length&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
-  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
+  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
@@ -537,6 +541,7 @@ function onOa(role,m){
     oaPartial[role]="";const text=(m.transcript||"").trim();if(!text)return;
     const r=role==="mix"?"other":role;
     entries.push({t:(Date.now()-t0)/1000,role:r,spk:0,text});
+    if(r==="other")lastOtherFinalAt=Date.now();
     removeInterim();renderLog();renderLatest();saveSession();
     if(r==="other"&&calDone)scheduleCue(0);
   }
@@ -601,6 +606,7 @@ function onDg(role,m){
     if(role==="mix"&&calibrating)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
     if(r==="other")gotOther=true;
   }
+  if(gotOther)lastOtherFinalAt=Date.now();
   removeInterim();renderLog();renderLatest();saveSession();
   if(gotOther&&calDone){ if(m.speech_final) scheduleCue(0); else scheduleCue(); }
 }
@@ -651,7 +657,8 @@ function showNote(r,restoring,first){
   const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
   set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
   if(restoring)noteStamp=r.stamp||"";else if(first||!noteStamp)noteStamp=$("clock").textContent;
-  r.stamp=noteStamp;$("noteStamp").textContent=noteStamp;
+  r.stamp=noteStamp;const _l=latLog[latLog.length-1];
+  $("noteStamp").textContent=noteStamp+((_l&&_l.first!=null)?`　${(_l.first/1000).toFixed(1)}秒`:"");
   if(r.flag){const changed=$("alerts").textContent!==r.flag;$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(changed&&navigator.vibrate)navigator.vibrate(120)}
   else $("alertCard").style.display="none";
 }
@@ -712,6 +719,36 @@ const JEV_HINT={
   smalltalk:"雑談か相槌。短い受け止めだけでよい。",
   self:"自分側の発言。カンペは不要。"};
 let jevLog=[],jevFails=0,jevOffThisSession=false,lastKind=null;
+/* ---- 応答速度の計測 ---- */
+let latLog=[], lastOtherFinalAt=0;
+function renderLatLog(){
+  const el=$("latBox"); if(!el)return;
+  const done=latLog.filter(x=>x.first!=null);
+  let head="";
+  if(done.length){
+    const avg=a=>Math.round(a.reduce((x,y)=>x+y,0)/a.length);
+    const med=a=>{const b=[...a].sort((x,y)=>x-y);return b[Math.floor(b.length/2)]};
+    const f=done.map(x=>x.first);
+    head=`件数 ${latLog.length}（カンペ表示 ${done.length} / 見送り ${latLog.length-done.length}）\n`
+       + `初表示まで 平均 ${(avg(f)/1000).toFixed(1)}秒 / 中央値 ${(med(f)/1000).toFixed(1)}秒 / 最速 ${(Math.min(...f)/1000).toFixed(1)}秒 / 最遅 ${(Math.max(...f)/1000).toFixed(1)}秒\n\n`;
+  }
+  el.textContent = latLog.length
+    ? head + latLog.slice(-20).map(x=>
+        `${x.time} ${x.first!=null?`初表示 ${(x.first/1000).toFixed(1)}秒  完了 ${(x.done/1000).toFixed(1)}秒`:"見送り（カンペなし）"}`
+        + `${x.jev!=null?`  Jev ${x.jev}ms`:""}${x.kind?`  ${JEV_KINDS[x.kind]||x.kind}`:""}${x.model?`  ${x.model.replace(/^claude-/,"")}`:""}`
+        + `\n　　「${x.text}」`).join("\n")
+    : "まだ計測はありません";
+}
+function latTSV(){
+  const h="No\t時刻\t初表示(秒)\t完了(秒)\tJev(ms)\t判定\tモデル\t発言\n";
+  return h + latLog.map((x,i)=>[i+1,x.time,x.first!=null?(x.first/1000).toFixed(2):"見送り",
+    x.done!=null?(x.done/1000).toFixed(2):"",x.jev??"",x.kind?(JEV_KINDS[x.kind]||x.kind):"",
+    x.model||"",x.text].join("\t")).join("\n");
+}
+$("btnLatCopy").onclick=async()=>{ if(!latLog.length){toast("計測がありません");return}
+  try{await navigator.clipboard.writeText(latTSV());toast("計測結果をコピーしました")}
+  catch(_){const ta=document.createElement("textarea");ta.value=latTSV();document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();toast("計測結果をコピーしました")} };
+$("btnLatClear").onclick=()=>{latLog=[];renderLatLog();toast("計測をリセットしました")};
 function renderJevLog(){const el=$("jevBox");if(!el)return;
   el.textContent=jevLog.length?jevLog.slice(-30).map(j=>
     `${j.time} ${j.called?"→Claude":"　見送り"} ${JEV_KINDS[j.kind]||j.kind} 必要度${j.need}(確信${j.conf}) ${j.ms}ms\n　　「${j.text}」`).join("\n"):"まだ判定はありません";}
@@ -757,12 +794,15 @@ async function runCue(){
   if(cueBusy){cueTimer=setTimeout(runCue,300);return}
   cueBusy=true;cueDirty=false;$("dot").className="dot think";
   const ac=new AbortController();cueAbort=ac;let shown=false;
+  const anchor=lastOtherFinalAt||Date.now();          // 相手の発話が確定した時刻
+  const rec={time:$("clock").textContent,text:"",jev:null,kind:null,model:null,first:null,done:null};
 
   // --- Jev判定（使う設定のときだけ。失敗は握りつぶして従来動作に戻す） ---
   let kind=null,useSmart=false;
   const lastOther=[...entries].reverse().find(e=>e.role==="other");
   if(cfg.jev==="on"&&!jevOffThisSession&&lastOther){
     try{
+      rec.text=lastOther.text.slice(0,40);
       const j=await jevJudge(lastOther.text);
       const low=(j.kconf<0.4||j.nconf<0.4);            // 判定が割れたら安全側
       const call=(j.need>=(cfg.jevTh??2))||low;
@@ -770,14 +810,16 @@ async function runCue(){
       renderJevLog();logd("jev",j.kind,"need="+j.need.toFixed(1),"conf="+j.kconf.toFixed(2),j.ms+"ms",call?"→Claude":"見送り");
       jevFails=0;
       if(j.kind==="request"||j.kind==="decision")tags.push({t:lastOther.t,kind:j.kind,text:lastOther.text});
-      kind=j.kind;useSmart=(j.hard>0.6&&j.need>=3);
-      if(!call){ cueBusy=false;if(running)$("dot").className="dot live"; if(cueDirty)scheduleCue(0); return; }
+      kind=j.kind;useSmart=(j.hard>0.6&&j.need>=3);rec.jev=j.ms;rec.kind=j.kind;
+      if(!call){ latLog.push(rec);renderLatLog();cueBusy=false;if(running)$("dot").className="dot live"; if(cueDirty)scheduleCue(0); return; }
     }catch(e){
       jevFails++;logd("jev error",String(e.message||e));
       if(jevFails>=3){jevOffThisSession=true;toast("Jev判定を停止し、従来どおり毎回カンペを出します")}
     }
   }
 
+  if(!rec.text&&lastOther)rec.text=lastOther.text.slice(0,40);
+  rec.model=useSmart?cfg.mSmart:cfg.mFast;
   try{
     const txt=await claudeStream(useSmart?cfg.mSmart:cfg.mFast,sysWithMemo(
 `あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。${kind?"\n今の相手の発言は「"+JEV_KINDS[kind]+"」と判定されています。"+JEV_HINT[kind]:""}
@@ -794,8 +836,14 @@ async function runCue(){
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
 ・会話に出ていない事実を作らない`),
 `【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
-      full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full); if(r.say[0]){showNote(r,false,!shown);shown=true;} },ac.signal);
-    if(!ac.signal.aborted){showNote(parseCueLines(txt),false,!shown);lastCueAt=Date.now();}
+      full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full);
+        if(r.say[0]){ if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);renderLatLog();} showNote(r,false,!shown);shown=true;} },ac.signal);
+    if(!ac.signal.aborted){
+      if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);}
+      rec.done=Date.now()-anchor;renderLatLog();
+      showNote(parseCueLines(txt),false,!shown);lastCueAt=Date.now();
+      logd("latency",`初表示 ${(rec.first/1000).toFixed(2)}s`,`完了 ${(rec.done/1000).toFixed(2)}s`,rec.jev!=null?`Jev ${rec.jev}ms`:"Jevなし");
+    }
   }catch(e){ if(e.name!=="AbortError")toast(e.message) }
   if(cueAbort===ac)cueAbort=null;
   cueBusy=false;if(running)$("dot").className="dot live";
