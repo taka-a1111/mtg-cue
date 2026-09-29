@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29k -->
+<!-- BUILD_TAG: 2026-09-29l -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.26 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.27 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -197,6 +197,16 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <div class="latest" id="latest"><span class="empty">まだ発言はありません</span></div>
     </div>
 
+    <div class="card alert" id="keyCard" style="display:none">
+      <h2>重要（金額・契約・期日）</h2>
+      <ul class="pts" id="keyPts"></ul>
+    </div>
+
+    <div class="card" id="moneyCard" style="display:none">
+      <h2>会議で出た金額</h2>
+      <ul class="pts" id="moneyPts"></ul>
+    </div>
+
     <div class="card">
       <h2>ここまでの要点</h2>
       <ul class="pts" id="summary"><li class="empty">会話が進むと自動で更新されます</li></ul>
@@ -250,6 +260,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="row">
     <div class="f"><label>カンペを出す間（相手が黙ってから秒）</label><input id="pause" type="number" value="1.5" min="0.5" max="6" step="0.5"></div>
     <div class="f"><label>要点の更新間隔（秒）</label><input id="interval" type="number" value="60" min="20" max="180"></div>
+    <div class="f"><label>雑談のときはカンペを出さない</label><div class="seg" id="chatSeg"><button data-v="off">常に出す</button><button data-v="on">質問・依頼のときだけ</button></div><small>相手の発言に質問・依頼・金額・契約の手がかりが無いときは、カンペを作りません。長い雑談が多い相手で費用と表示のノイズが減ります。</small></div>
   </div>
   <div class="row">
     <div class="f"><label>カンペ・要点モデル（速い）</label><input id="mFast" value="claude-haiku-4-5-20251001"></div>
@@ -291,7 +302,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.26 / BUILD_TAG 2026-09-29k</div>
+  <div class="foot">mtg_cue ver1.27 / BUILD_TAG 2026-09-29l</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -312,7 +323,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29k");
+console.log("BUILD_TAG: 2026-09-29l");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -326,11 +337,11 @@ const $=id=>document.getElementById(id);
 const S={
   load(){const s=JSON.parse(localStorage.getItem("mc_settings")||"{}");
     $("dgKey").value=s.dgKey||""; $("oaKey").value=s.oaKey||""; $("aKey").value=s.aKey||""; setStt(s.stt||"deepgram"); $("dgModel").value=s.dgModel||"nova-3|multi";
-    $("keyterms").value=s.keyterms||"";$("gasUrl").value=s.gasUrl||"";$("gasToken").value=s.gasToken||"";$("jevKey").value=s.jevKey||"";$("jevRelay").value=s.jevRelay||"/api/jev";$("jevBase").value=s.jevBase||"";$("jevTh").value=(s.jevTh??2);$("thVal").textContent=(s.jevTh??2);setJev(s.jev||"off");setAuto(s.autoCase||"off");renderCases(s.cases||[]); $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
+    $("keyterms").value=s.keyterms||"";$("gasUrl").value=s.gasUrl||"";$("gasToken").value=s.gasToken||"";$("jevKey").value=s.jevKey||"";$("jevRelay").value=s.jevRelay||"/api/jev";$("jevBase").value=s.jevBase||"";$("jevTh").value=(s.jevTh??2);$("thVal").textContent=(s.jevTh??2);setJev(s.jev||"off");setAuto(s.autoCase||"off");setChat(s.chatSkip||"off");renderCases(s.cases||[]); $("pause").value=s.pause||1.5; $("interval").value=s.interval||60;
     $("mFast").value=s.mFast||"claude-haiku-4-5-20251001"; $("mSmart").value=s.mSmart||"claude-sonnet-5";
-    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode,stt:curStt,jev:curJev,autoCase:curAuto,cases:caseList};},
+    $("memo").value=s.memo||DEFAULT_MEMO; setMode(s.mode||(hasDisplayAudio()?"pc":"phone")); return {...s,mode:curMode,stt:curStt,jev:curJev,autoCase:curAuto,chatSkip:curChat,cases:caseList};},
   save(){const s={mode:curMode,stt:curStt,oaKey:$("oaKey").value.trim(),dgKey:$("dgKey").value.trim(),aKey:$("aKey").value.trim(),dgModel:$("dgModel").value,
-    keyterms:$("keyterms").value.trim(),gasUrl:$("gasUrl").value.trim(),gasToken:$("gasToken").value.trim(),jev:curJev,autoCase:curAuto,cases:caseList,caseKey:$("caseSel").value,jevKey:$("jevKey").value.trim(),jevRelay:$("jevRelay").value.trim()||"/api/jev",jevBase:$("jevBase").value.trim(),jevTh:+$("jevTh").value,pause:+$("pause").value||2,interval:+$("interval").value||60,
+    keyterms:$("keyterms").value.trim(),gasUrl:$("gasUrl").value.trim(),gasToken:$("gasToken").value.trim(),jev:curJev,autoCase:curAuto,chatSkip:curChat,cases:caseList,caseKey:$("caseSel").value,jevKey:$("jevKey").value.trim(),jevRelay:$("jevRelay").value.trim()||"/api/jev",jevBase:$("jevBase").value.trim(),jevTh:+$("jevTh").value,pause:+$("pause").value||2,interval:+$("interval").value||60,
     mFast:$("mFast").value.trim(),mSmart:$("mSmart").value.trim(),memo:$("memo").value};
     localStorage.setItem("mc_settings",JSON.stringify(s)); return s;}
 };
@@ -348,6 +359,9 @@ $("jevTh").oninput=e=>{$("thVal").textContent=e.target.value};
 let curAuto="off";
 function setAuto(v){curAuto=v;[...$("autoSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v))}
 $("autoSeg").onclick=e=>{const b=e.target.closest("button");if(b)setAuto(b.dataset.v)};
+let curChat="off";                                          // ver1.27 雑談スキップ
+function setChat(v){curChat=v;[...$("chatSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v))}
+$("chatSeg").onclick=e=>{const b=e.target.closest("button");if(b)setChat(b.dataset.v)};
 
 /* ---- 案件マスタ（GAS経由でドライブのスプレッドシートを読み書き） ---- */
 let caseList=[];
@@ -378,14 +392,14 @@ async function gasGet(action,extra){
   if(!d.ok)throw new Error(d.error||"GASエラー");
   return d;
 }
-async function fetchCasesFile(){                           // ver1.26 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
+async function fetchCasesFile(){                           // ver1.27 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
   const r=await fetch("cases.json?ts="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("cases.json "+r.status);
   const d=await r.json();
   if(!Array.isArray(d.cases))throw new Error("cases.json の形式が不正です");
   return d;
 }
-let casesToday=null;                                        // ver1.26 cases.json に書かれた「今日の会議」
+let casesToday=null;                                        // ver1.27 cases.json に書かれた「今日の会議」
 async function fetchCases(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
@@ -456,8 +470,8 @@ function pickCaseFromTranscript(){
 async function autoPickCase(){
   autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on")return;
-  if(!caseList.length)await fetchCases(true);               // ver1.26 案件が空なら先に読み込む
-  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.26 今日の会議が書いてあればそれを使う
+  if(!caseList.length)await fetchCases(true);               // ver1.27 案件が空なら先に読み込む
+  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.27 今日の会議が書いてあればそれを使う
     const c=caseList.find(x=>x.key===casesToday.key);
     if(c){ autoPickDone=true;applyCase(c,casesToday.event?("今日の予定："+casesToday.event):"今日の予定");
       toast(`前提メモを自動で読み込みました：${c.name}`);logd("autocase(today)",c.name,casesToday.event||"");return; }
@@ -493,7 +507,7 @@ let calChars={},calibrating=false,calDone=false;
 let summaryPts=[], lastCueAt=0, lastNote=null, startedAt=null, saveTimer=null, tags=[];
 /* ---- 自動保存・復元 ---- */
 function saveSession(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{
-  localStorage.setItem("mc_session",JSON.stringify({v:1,startedAt,elapsed:t0?Date.now()-t0:0,mode:cfg.mode,entries,selfSpk,calDone,summaryPts,lastNote,tags,jevLog,savedAt:Date.now()}));
+  localStorage.setItem("mc_session",JSON.stringify({v:1,startedAt,elapsed:t0?Date.now()-t0:0,mode:cfg.mode,entries,selfSpk,calDone,summaryPts,lastNote,tags,jevLog,moneyLog,keyPins,savedAt:Date.now()}));
 }catch(e){}},1500)}
 function clearSession(){try{localStorage.removeItem("mc_session")}catch(_){}}
 let minutesText="";
@@ -515,7 +529,7 @@ function minutesTextAll(){
     "【依頼・決定】",tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n")||"（なし）","",
     "【全文】",entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")].join("\n");
 }
-function downloadMinutes(){                                 // ver1.26 GAS未設定でも手元にファイルで残す
+function downloadMinutes(){                                 // ver1.27 GAS未設定でも手元にファイルで残す
   if(entries.length<3){toast("記録が短いため保存しません");return}
   const d=new Date(startedAt||Date.now());
   const name=`mtg_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}.txt`;
@@ -576,7 +590,7 @@ function isStale(savedAt){
 function restoreSession(){
   let d;try{d=JSON.parse(localStorage.getItem("mc_session")||"null")}catch(_){}
   if(!d||!d.entries||!d.entries.length)return false;
-  entries=d.entries;selfSpk=d.selfSpk??null;calDone=!!d.calDone;summaryPts=d.summaryPts||[];lastNote=d.lastNote||null;tags=d.tags||[];jevLog=d.jevLog||[];renderJevLog();startedAt=d.startedAt||null;
+  entries=d.entries;selfSpk=d.selfSpk??null;calDone=!!d.calDone;summaryPts=d.summaryPts||[];lastNote=d.lastNote||null;tags=d.tags||[];jevLog=d.jevLog||[];renderJevLog();moneyLog=d.moneyLog||[];keyPins=d.keyPins||[];renderMoney();renderKeys();startedAt=d.startedAt||null;
   t0=Date.now()-(d.elapsed||0);
   renderLog();renderLatest();
   if(summaryPts.length)$("summary").innerHTML=summaryPts.map(x=>`<li>${esc(x)}</li>`).join("");
@@ -584,7 +598,7 @@ function restoreSession(){
   $("clock").textContent=(()=>{const x=Math.floor((d.elapsed||0)/1000);return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")})();
   $("btnMin").disabled=entries.length<3;
   const when=new Date(d.savedAt);
-  staleSession=isStale(d.savedAt);                           // ver1.26 日付が変わっていたら続きにしない
+  staleSession=isStale(d.savedAt);                           // ver1.27 日付が変わっていたら続きにしない
   setStatus(staleSession
     ? `${when.getMonth()+1}月${when.getDate()}日の記録が残っています。「開始」で新しい会議として始めます（前回分は履歴に残ります）。`
     : `前回の内容を復元しました（${when.getHours()}:${String(when.getMinutes()).padStart(2,"0")}保存）。「開始」で続きから再開できます。`,"");
@@ -599,7 +613,7 @@ async function start(){
   let resume=false;
   if(entries.length&&!staleSession&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
   if(staleSession&&entries.length)toast("前回は別の日の記録のため、新しい会議として始めます");
-  if(!resume){archiveSession();staleSession=false;minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
+  if(!resume){archiveSession();staleSession=false;minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];moneyLog=[];keyPins=[];renderMoney();renderKeys();lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
@@ -620,6 +634,15 @@ async function start(){
   running=true;paused=false;if(!resume)t0=Date.now();
   $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").style.display="none";$("btnPause").style.display="";$("btnPause").textContent="一時停止";$("btnPause").classList.remove("on");
   clockTimer=setInterval(tick,1000);
+  idleWarnAt=0;
+  idleTimer=setInterval(()=>{                                // ver1.27 停止し忘れの防止
+    if(!running||paused||!lastOtherFinalAt)return;
+    const mins=(Date.now()-lastOtherFinalAt)/60000;
+    if(mins>=10&&Date.now()-idleWarnAt>10*60000){
+      idleWarnAt=Date.now();
+      toast(`${Math.floor(mins)}分間、相手の発言がありません。会議が終わっていれば「停止」を押してください`);
+    }
+  },60000);
   sumTimer=setInterval(refreshSummary,cfg.interval*1000);
   driveTimer=setInterval(()=>saveToDrive(""),5*60*1000);
   if(resume&&calDone)setStatus("続きから聞き取り中","live");
@@ -632,7 +655,7 @@ async function start(){
 function stop(){
   running=false;
   conns.forEach(c=>c.close());conns=[];cleanupMedia();
-  clearInterval(clockTimer);clearInterval(sumTimer);clearInterval(driveTimer);clearTimeout(cueTimer);wakeLock?.release?.();
+  clearInterval(clockTimer);clearInterval(idleTimer);clearInterval(sumTimer);clearInterval(driveTimer);clearTimeout(cueTimer);wakeLock?.release?.();
   paused=false;$("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
   $("btnPause").style.display="none";$("btnMin").style.display="";$("btnMin").disabled=entries.length<3;
   setStatus("停止しました。書き起こしは画面に残ります（履歴にも保存されます）。","");saveSession();archiveSession();saveToDrive("会議終了");
@@ -768,7 +791,7 @@ function openDeepgram(role,stream,diarize){
 }
 window.addEventListener("online",()=>{if(running)toast("ネットワークが復帰しました")});
 window.addEventListener("offline",()=>{if(running)toast("ネットワークが切れました。復帰後に自動で再接続します")});
-// ver1.26 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
+// ver1.27 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
 const JUNK_RE=/^(日本語の会議の文字起こし|ご視聴ありがとうございました|ご清聴ありがとうございました|チャンネル登録[^。]*|おわり|終わり|Thank you\.?|Thanks for watching\.?|you|音楽|拍手|\(音楽\)|\[音楽\])$/i;
 function bigrams(x){const s=new Set();for(let i=0;i<x.length-1;i++)s.add(x.slice(i,i+2));return s}
 function simRatio(a,b){
@@ -799,6 +822,7 @@ function addEntry(t,role,spk,text){
     }
   }
   entries.push({t,role,spk,text});
+  scanMoneyAndKeys(t,role,text);
   return true;
 }
 function onDg(role,m){
@@ -870,11 +894,11 @@ function unverifiedNumbers(text){
   while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
   return [...out];
 }
-// ver1.26 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
+// ver1.27 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
 const NEG_WORDS=["未着","未定","未決","未受領","未提出","未確定","未完了","未回答","保留","届いていない","来ていない","もらえていない","いただけていない","決まっていない","出ていない"];
 const POS_WORDS=["届いて","受け取","受領","完了","済み","済んで","進めて","着手","決まり","決定し","確定し","終わって","いただいて","もらって","来ました","出ています"];
 const STOP_WORDS=["前提","メモ","場合","内容","確認","対応","予定","今回","以下","こちら","先方","自分","相手","こと","もの","ため","ところ","とおり","について","として"];
-function negWindows(){                                      // ver1.26 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
+function negWindows(){                                      // ver1.27 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
   const out=[];
   for(const raw of String(cfg.memo||"").split("\n")){
     const line=raw.trim(); if(!line)continue;
@@ -892,7 +916,7 @@ function negWindows(){                                      // ver1.26 「未着
   return out;
 }
 const SELF_CLAIMS=["進めており","進めています","進行中です","対応済み","対応しました","完了しています","完了しました","納品済み","納品しました","提出済み","提出しました","着手して","受け取っています","受け取りました","届いています","決まっています","決まりました","確認済み","設定済み","送付済み","作成済み","管理しています","実施しています"];
-function selfAssertions(text){                              // ver1.26 自分側の状況を断定していないか
+function selfAssertions(text){                              // ver1.27 自分側の状況を断定していないか
   const hits=[];
   for(const sent of String(text||"").split(/[。\n]/)){
     const w=SELF_CLAIMS.find(x=>sent.indexOf(x)>=0);
@@ -912,6 +936,57 @@ function conflictingClaims(text){
     }
   }
   return hits.slice(0,2);
+}
+/* ---- ver1.27 金額レーダーと重要ピン ---- */
+const MONEY_RE=/([0-9０-９][0-9０-９,，]*)\s*(万円|万|円)/g;
+const KEY_RE=/[0-9０-９][0-9０-９,，]*\s*(万円|万|円)|契約|単価|見積|請求|支払|納期|締め|期日|外します|決めました|決定|やめ(ます|る)|終わりに|至急|いつまで|お願いできます/;
+const ASK_RE=/(ですか|でしょうか|ますか|ませんか|いかが|どう(で|し|なん)|いくら|いつ|どこ|なぜ|どちら|教えて|お願い|可能|ください|くれます|よろしい)[?？]?$|[?？]/;
+let moneyLog=[],keyPins=[];
+function moneyNorm(raw,unit){
+  const n=Number(normNum(raw));
+  if(!isFinite(n))return null;
+  return unit==="円"?n:n*10000;
+}
+function scanMoneyAndKeys(t,role,text){
+  let m,found=[];
+  MONEY_RE.lastIndex=0;
+  while((m=MONEY_RE.exec(text))){
+    const v=moneyNorm(m[1],m[2]); if(v==null||v<100)continue;
+    found.push({t,role,raw:m[0],v});
+  }
+  if(found.length){
+    moneyLog=moneyLog.concat(found).slice(-30);
+    renderMoney();
+  }
+  if(role==="other"&&KEY_RE.test(text)){
+    keyPins.push({t,text:text.slice(0,90)});keyPins=keyPins.slice(-8);
+    renderKeys();
+    if(navigator.vibrate)navigator.vibrate([40,30,40,30,40]);
+  }
+}
+function moneyConflicts(){                                   // 3分以内に違う金額が出たら食い違いの可能性
+  const bad=new Set();
+  for(let i=0;i<moneyLog.length;i++)for(let j=i+1;j<moneyLog.length;j++){
+    const a=moneyLog[i],b=moneyLog[j];
+    if(Math.abs(a.t-b.t)>180)continue;
+    if(a.v!==b.v&&Math.max(a.v,b.v)/Math.min(a.v,b.v)<4){bad.add(i);bad.add(j)}
+  }
+  return bad;
+}
+function renderMoney(){
+  if(!moneyLog.length){$("moneyCard").style.display="none";return}
+  const bad=moneyConflicts();
+  $("moneyCard").style.display="";
+  $("moneyPts").innerHTML=moneyLog.slice(-8).map((x,k)=>{
+    const idx=moneyLog.length-Math.min(8,moneyLog.length)+k;
+    const warn=bad.has(idx)?' style="color:var(--warn);font-weight:700"':"";
+    return `<li${warn}>${stamp(x.t)} ${x.role==="self"?"自分":"相手"}　${esc(x.raw)}${bad.has(idx)?"　※近い時間に違う金額あり":""}</li>`;
+  }).reverse().join("");
+}
+function renderKeys(){
+  if(!keyPins.length){$("keyCard").style.display="none";return}
+  $("keyCard").style.display="";
+  $("keyPts").innerHTML=keyPins.map(x=>`<li>${stamp(x.t)}　${esc(x.text)}</li>`).reverse().join("");
 }
 let noteStamp="";
 function showNote(r,restoring,first,final){
@@ -947,7 +1022,9 @@ function showNote(r,restoring,first,final){
 // 前提メモは毎回同じなので、systemの先頭に固定ブロックとして置きキャッシュ対象にする。
 // 可変の指示文は必ずその後ろに置く（キャッシュは先頭からの一致で効くため）。
 function sysWithMemo(instr){
-  const memo="【前提メモ】\n"+(cfg.memo||"（なし）");
+  const kt=(cfg.keyterms||"").trim();
+  const memo="【前提メモ】\n"+(cfg.memo||"（なし）")
+    +(kt?"\n\n【この会議に出てくる固有名詞・用語。書き起こしの誤変換はこの語に直す】\n"+kt:"");
   return [{type:"text",text:memo,cache_control:{type:"ephemeral"}},{type:"text",text:instr}];
 }
 function logUsage(tag,u){ if(!u)return;
@@ -1065,7 +1142,7 @@ async function jevJudge(text){
   const hard=a.hard?.noul??0.5;
   return {kind,kconf,need,nconf,hard,ms};
 }
-let cueAbort=null;
+let cueAbort=null,idleTimer=null,idleWarnAt=0;
 function scheduleCue(delay){cueDirty=true;clearTimeout(cueTimer);
   if(cueBusy&&cueAbort){cueAbort.abort();} // 作りかけは捨てて最新の発言で作り直す
   cueTimer=setTimeout(runCue,(delay??cfg.pause)*1000)}
@@ -1098,6 +1175,10 @@ async function runCue(){
     }
   }
 
+  if(curChat==="on"&&lastOther&&!ASK_RE.test(lastOther.text)&&!KEY_RE.test(lastOther.text)){
+    logd("雑談と判定して見送り",lastOther.text.slice(0,30));
+    cueBusy=false;if(running)$("dot").className="dot live";if(cueDirty)scheduleCue(0);return;
+  }
   if(!rec.text&&lastOther)rec.text=lastOther.text.slice(0,40);
   rec.model=useSmart?cfg.mSmart:cfg.mFast;
   try{
@@ -1159,7 +1240,7 @@ answersは自分がそのまま口に出せる日本語（各80文字以内）�
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus(running?"聞き取り中":"停止中",running?"live":"");
 };
-function transcriptChunks(limit){                            // ver1.26 長い会議は分割して要約してからまとめる
+function transcriptChunks(limit){                            // ver1.27 長い会議は分割して要約してからまとめる
   const out=[];let cur="";
   for(const e of entries){
     const line=`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}\n`;
@@ -1181,6 +1262,7 @@ $("btnMin").onclick=async()=>{
   if(deepBusy)return;
   if(!entries.length){toast("書き起こしがありません");return}
   deepBusy=true;setStatus("議事録を作成中…","think");
+  const keyText=keyPins.length?keyPins.map(x=>`[${stamp(x.t)}] ${x.text}`).join("\n"):"（なし）";
   const tagText=tags.length?tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n"):"（なし）";
   const head=MIN_HEAD.replace("__DATE__",new Date().toLocaleDateString("ja-JP"));
   try{
@@ -1203,7 +1285,7 @@ $("btnMin").onclick=async()=>{
       setStatus("議事録を作成中… まとめ","think");
     }
     const txt=await claude(cfg.mSmart,sysWithMemo(head),
-      `【会議中に検出された依頼・決定事項】\n${tagText}\n\n${body}`,1800);
+      `【会議中に検出された依頼・決定事項】\n${tagText}\n\n【金額・契約・期日に触れた発言】\n${keyText}\n\n${body}`,1800);
     $("minText").value=txt.trim();minutesText=txt.trim();
   }catch(e){
     minutesText="";
@@ -1217,7 +1299,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
-fetchCases(true);                                            // ver1.26 起動時に案件マスタを黙って読み込む
+fetchCases(true);                                            // ver1.27 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
 if("serviceWorker" in navigator)window.addEventListener("load",()=>{
@@ -1232,7 +1314,7 @@ function refreshInstallBtn(){$("btnInstall").style.display=isStandalone()?"none"
 refreshInstallBtn();
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;refreshInstallBtn();});
 window.addEventListener("appinstalled",()=>{installEvt=null;$("btnInstall").style.display="none";toast("インストールしました")});
-$("btnInstall").onclick=async()=>{                           // ver1.26 対応していない環境では手順を出す
+$("btnInstall").onclick=async()=>{                           // ver1.27 対応していない環境では手順を出す
   if(installEvt){ installEvt.prompt(); await installEvt.userChoice; installEvt=null; refreshInstallBtn(); return; }
   const ua=navigator.userAgent;
   const msg=/iPhone|iPad|iPod/.test(ua)
