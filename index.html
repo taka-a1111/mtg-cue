@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29a -->
+<!-- BUILD_TAG: 2026-09-29b -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.16 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.17 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -45,6 +45,9 @@ input,select,textarea{font-family:inherit}
 .top .time{font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
 .gear{background:transparent;font-size:22px;padding:2px 6px;color:var(--muted)}
 .gear.hist{font-size:13px;border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+.topsel{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;
+  padding:5px 8px;font-size:13px;max-width:190px;font-family:inherit}
+.topsel.auto{border-color:#5a7ea8;color:var(--accent)}
 .hlist{display:flex;flex-direction:column;gap:10px}
 .hitem{background:var(--panel);border-radius:12px;padding:12px 14px}
 .hitem .ht{font-size:15px;font-weight:700;margin-bottom:2px}
@@ -152,6 +155,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="dot" id="dot"></div>
   <div class="st" id="status">停止中。右下の開始で聞き取りを始めます。</div>
   <div class="time" id="clock">00:00</div>
+  <select id="topCase" class="topsel" title="案件（前提メモ）"><option value="">案件なし</option></select>
   <button class="gear hist" id="btnInstall" style="display:none" aria-label="インストール">インストール</button>
   <button class="gear hist" id="btnHist" aria-label="履歴">履歴</button>
   <button class="gear" id="btnGear" aria-label="設定">⚙</button>
@@ -279,7 +283,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.16 / BUILD_TAG 2026-09-29a</div>
+  <div class="foot">mtg_cue ver1.17 / BUILD_TAG 2026-09-29b</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -300,7 +304,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29a");
+console.log("BUILD_TAG: 2026-09-29b");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -341,12 +345,19 @@ $("autoSeg").onclick=e=>{const b=e.target.closest("button");if(b)setAuto(b.datas
 let caseList=[];
 function renderCases(list){
   caseList=Array.isArray(list)?list:[];
-  const sel=$("caseSel"),prev=sel.value;
-  sel.innerHTML=caseList.length
-    ? caseList.map(c=>`<option value="${esc(c.key)}">${esc(c.name||c.key)}</option>`).join("")
-    : '<option value="">（未取得）</option>';
-  if(prev&&caseList.some(c=>c.key===prev))sel.value=prev;
+  const opts=caseList.map(c=>`<option value="${esc(c.key)}">${esc(c.name||c.key)}</option>`).join("");
+  for(const id of ["caseSel","topCase"]){
+    const sel=$(id),prev=sel.value;
+    sel.innerHTML=(id==="topCase"?'<option value="">案件なし</option>':"")+(opts||(id==="caseSel"?'<option value="">（未取得）</option>':""));
+    if(prev&&caseList.some(c=>c.key===prev))sel.value=prev;
+  }
 }
+$("topCase").onchange=e=>{
+  const c=caseList.find(x=>x.key===e.target.value);
+  autoPickDone=true;                       // 手で選んだら以後の自動切替はしない
+  if(c){applyCase(c,"手動");toast(`前提メモ：${c.name}`)}
+  else $("topCase").classList.remove("auto");
+};
 async function gasGet(action,extra){
   if(!cfg.gasUrl)throw new Error("GASのURLが未設定です");
   const u=new URL(cfg.gasUrl);
@@ -371,7 +382,7 @@ async function fetchCases(quiet){
 function applyCase(c,how){
   if(!c)return false;
   $("memo").value=c.memo||"";$("keyterms").value=c.keyterms||"";
-  $("caseSel").value=c.key;cfg=S.save();
+  $("caseSel").value=c.key;$("topCase").value=c.key;$("topCase").classList.toggle("auto",!!how&&how!=="手動");cfg=S.save();
   $("caseHint").textContent=`読み込み済み：${c.name||c.key}${how?"（"+how+"）":""}`;
   return true;
 }
@@ -398,13 +409,34 @@ $("btnCaseSave").onclick=async()=>{
     $("caseHint").textContent=`保存しました：${name}`;
   }catch(e){toast("案件の保存に失敗: "+String(e.message||e).slice(0,60))}
 };
+let autoPickDone=false, autoPickUntil=0;
+// 相手の発言に案件の照合キーワードが出てきたら、その案件に切り替える（電話など予定がない場合の受け皿）
+function pickCaseFromTranscript(){
+  if(autoPickDone||curAuto!=="on"||!caseList.length)return;
+  if(Date.now()>autoPickUntil){autoPickDone=true;return}
+  const hay=entries.filter(e=>e.role==="other").map(e=>e.text).join(" ").toLowerCase();
+  if(hay.length<15)return;
+  const scored=caseList.map(c=>{
+    const words=String(c.match||c.name).split(/[,、\s]+/).map(w=>w.trim().toLowerCase()).filter(w=>w.length>=2);
+    return {c,hit:words.filter(w=>hay.indexOf(w)>=0).length};
+  }).sort((a,b)=>b.hit-a.hit);
+  if(!scored.length||scored[0].hit<1)return;
+  if(scored[1]&&scored[1].hit===scored[0].hit)return;      // 割れたら切り替えない
+  const c=scored[0].c;
+  autoPickDone=true;
+  if($("topCase").value===c.key)return;                    // すでにその案件なら何もしない
+  applyCase(c,"会話から判定");
+  toast(`前提メモを切り替えました：${c.name}`);
+  logd("autocase(transcript)",c.name,"hit="+scored[0].hit);
+}
 async function autoPickCase(){
+  autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on"||!cfg.gasUrl)return;
   try{
     const d=await gasGet("next");
-    if(d.case){ applyCase(d.case,d.event?("カレンダー："+d.event):"カレンダー");
+    if(d.case){ autoPickDone=true;applyCase(d.case,d.event?("カレンダー："+d.event):"カレンダー");
       toast(`前提メモを自動で読み込みました：${d.case.name}`);logd("autocase",d.case.name,d.event||""); }
-    else logd("autocase","一致なし");
+    else logd("autocase","カレンダー一致なし（会話から判定します）",d.reason||"");
   }catch(e){ logd("autocase error",String(e.message||e)); }
 }
 function hasDisplayAudio(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia)&&!/Android|iPhone|iPad/i.test(navigator.userAgent)}
@@ -628,7 +660,7 @@ function onOa(role,m){
     oaPartial[role]="";const text=(m.transcript||"").trim();if(!text)return;
     const r=role==="mix"?"other":role;
     entries.push({t:(Date.now()-t0)/1000,role:r,spk:0,text});
-    if(r==="other")lastOtherFinalAt=Date.now();
+    if(r==="other"){lastOtherFinalAt=Date.now();pickCaseFromTranscript()}
     removeInterim();renderLog();renderLatest();saveSession();
     if(r==="other"&&calDone)scheduleCue(0);
   }
@@ -693,7 +725,7 @@ function onDg(role,m){
     if(role==="mix"&&calibrating)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
     if(r==="other")gotOther=true;
   }
-  if(gotOther)lastOtherFinalAt=Date.now();
+  if(gotOther){lastOtherFinalAt=Date.now();pickCaseFromTranscript()}
   removeInterim();renderLog();renderLatest();saveSession();
   if(gotOther&&calDone){ if(m.speech_final) scheduleCue(0); else scheduleCue(); }
 }
