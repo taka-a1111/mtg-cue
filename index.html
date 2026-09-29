@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29b -->
+<!-- BUILD_TAG: 2026-09-29c -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.17 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.18 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -86,6 +86,8 @@ input,select,textarea{font-family:inherit}
 .note .say2{font-size:16px;font-weight:500;line-height:1.5;color:#4a4020;margin-bottom:8px;padding-left:12px;border-left:3px solid #d9c96a}
 .note .ask{font-size:14px;color:#3f5b7a;line-height:1.45}
 .note .ask::before{content:"確認：";color:var(--note-dim)}
+.note .numwarn{margin-top:10px;padding:8px 10px;background:#c0392b;color:#fff;border-radius:8px;
+  font-size:14px;line-height:1.5;font-weight:700}
 .note.soft{background:#efe6c8;box-shadow:0 4px 12px rgba(0,0,0,.25)}
 .note.soft .say{font-size:17px;font-weight:500}
 .note .stamp{position:absolute;right:12px;top:10px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
@@ -172,6 +174,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <div class="say" id="nSay" style="display:none"></div>
       <div class="say2" id="nSay2" style="display:none"></div>
       <div class="ask" id="nAsk" style="display:none"></div>
+      <div class="numwarn" id="nNum" style="display:none"></div>
     </div>
 
     <div class="card alert" id="alertCard" style="display:none">
@@ -283,7 +286,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.17 / BUILD_TAG 2026-09-29b</div>
+  <div class="foot">mtg_cue ver1.18 / BUILD_TAG 2026-09-29c</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -304,7 +307,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29b");
+console.log("BUILD_TAG: 2026-09-29c");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -525,7 +528,7 @@ function restoreSession(){
   t0=Date.now()-(d.elapsed||0);
   renderLog();renderLatest();
   if(summaryPts.length)$("summary").innerHTML=summaryPts.map(x=>`<li>${esc(x)}</li>`).join("");
-  if(lastNote)showNote(lastNote,true);
+  if(lastNote)showNote(lastNote,true,false,false);
   $("clock").textContent=(()=>{const x=Math.floor((d.elapsed||0)/1000);return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")})();
   $("btnMin").disabled=entries.length<3;
   const when=new Date(d.savedAt);
@@ -592,7 +595,7 @@ function resetUI(){
   $("latest").innerHTML='<span class="empty">まだ発言はありません</span>';
   $("summary").innerHTML='<li class="empty">会話が進むと自動で更新されます</li>';
   $("alertCard").style.display="none";$("deepCard").style.display="none";
-  $("note").classList.remove("soft");$("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
+  $("nNum").style.display="none";$("note").classList.remove("soft");$("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
   const h=cfg.mode==="pc"?"薄い行は自分の発言。":"薄い行は自分の発言（AIには「自分」として渡します）。行を長押し（PCは右クリック）で「これは自分の声」に切り替えられます。";
   $("hintM").textContent=h;$("hintP").textContent=h;
 }
@@ -770,14 +773,29 @@ function renderLatest(){
   $("latest").innerHTML=(last.length>1?`<span class="old">${esc(last[0].text)}</span>`:"")+esc(last[last.length-1].text);
 }
 function esc(s){return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+// 前提メモにも書き起こしにも出てこない数字は、AIが作った可能性がある。口に出す前に止める。
+function normNum(x){return String(x).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[,，]/g,"")}
+function unverifiedNumbers(text){
+  const hay=normNum((cfg.memo||"")+" "+entries.map(e=>e.text).join(" "));
+  const out=new Set(); const re=/[0-9０-９][0-9０-９,，]*/g; let m;
+  while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
+  return [...out];
+}
 let noteStamp="";
-function showNote(r,restoring,first){
+function showNote(r,restoring,first,final){
   lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
   const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
   set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
   if(restoring)noteStamp=r.stamp||"";else if(first||!noteStamp)noteStamp=$("clock").textContent;
   r.stamp=noteStamp;const _l=latLog[latLog.length-1];
   $("noteStamp").textContent=noteStamp+((_l&&_l.first!=null)?`　${(_l.first/1000).toFixed(1)}秒`:"");
+  if(final||restoring){
+    const bad=unverifiedNumbers([r.say?.[0],r.say?.[1],r.ask].filter(Boolean).join(" "));
+    if(bad.length){ $("nNum").style.display="";
+      $("nNum").textContent=`この数字は前提メモにも会話にもありません：${bad.join("、")}　口に出す前に必ず確認してください`;
+      if(navigator.vibrate)navigator.vibrate([100,60,100]); logd("unverified numbers",bad.join(",")); }
+    else $("nNum").style.display="none";
+  }
   if(r.flag){const changed=$("alerts").textContent!==r.flag;$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(changed&&navigator.vibrate)navigator.vibrate(120)}
   else $("alertCard").style.display="none";
 }
@@ -953,6 +971,8 @@ async function runCue(){
 ・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
 ・第一声は会話体で自然に。防御的・事務的な言い回しにしない
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
+・金額・日付・件数・期限などの数字は、前提メモか会話の書き起こしに出てきたものをそのまま使う。足し算や掛け算をして新しい数字を作らない
+・前提メモにない数字を求められたら、数字を言わずに「確認のうえ、本日中にメールでご回答します」と返す案にする。概算やおおよその額も言わない
 ・会話に出ていない事実を作らない`),
 `【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
       full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full);
@@ -960,7 +980,7 @@ async function runCue(){
     if(!ac.signal.aborted){
       if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);}
       rec.done=Date.now()-anchor;renderLatLog();
-      showNote(parseCueLines(txt),false,!shown);lastCueAt=Date.now();
+      showNote(parseCueLines(txt),false,!shown,true);lastCueAt=Date.now();
       logd("latency",`初表示 ${(rec.first/1000).toFixed(2)}s`,`完了 ${(rec.done/1000).toFixed(2)}s`,rec.jev!=null?`Jev ${rec.jev}ms`:"Jevなし");
     }
   }catch(e){ if(e.name!=="AbortError")toast(e.message) }
@@ -983,7 +1003,8 @@ $("btnDeep").onclick=async()=>{
     const txt=await claude(cfg.mSmart,sysWithMemo(
 `あなたはオンライン商談中の「自分」に、次に話す内容を提案するアシスタントです。必ずJSONのみ:
 {"answers":["回答案1","回答案2","回答案3"],"caution":"言ってはいけない・即決してはいけない点があれば1行、なければnull"}
-answersは自分がそのまま口に出せる日本語（各80文字以内）。1つ目は本題への回答、2つ目は相手の意図を確かめる質問、3つ目は持ち帰る言い方。前提メモの希望条件と警戒事項に沿うこと。`),
+answersは自分がそのまま口に出せる日本語（各80文字以内）。1つ目は本題への回答、2つ目は相手の意図を確かめる質問、3つ目は持ち帰る言い方。前提メモの希望条件と警戒事項に沿うこと。
+金額・日付・件数の数字は、前提メモか会話に出てきたものだけを使う。計算して新しい数字を作らない。根拠がなければ数字を言わず、確認して折り返す言い方にする。`),
 `【会話の要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(40)}`,700);
     const r=parseJSON(txt);
     $("deepCard").style.display="";
