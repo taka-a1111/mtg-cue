@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29e -->
+<!-- BUILD_TAG: 2026-09-29f -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.20 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.21 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -286,7 +286,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.20 / BUILD_TAG 2026-09-29e</div>
+  <div class="foot">mtg_cue ver1.21 / BUILD_TAG 2026-09-29f</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -307,7 +307,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29e");
+console.log("BUILD_TAG: 2026-09-29f");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -373,14 +373,14 @@ async function gasGet(action,extra){
   if(!d.ok)throw new Error(d.error||"GASエラー");
   return d;
 }
-async function fetchCasesFile(){                           // ver1.20 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
+async function fetchCasesFile(){                           // ver1.21 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
   const r=await fetch("cases.json?ts="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("cases.json "+r.status);
   const d=await r.json();
   if(!Array.isArray(d.cases))throw new Error("cases.json の形式が不正です");
   return d;
 }
-let casesToday=null;                                        // ver1.20 cases.json に書かれた「今日の会議」
+let casesToday=null;                                        // ver1.21 cases.json に書かれた「今日の会議」
 async function fetchCases(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
@@ -451,8 +451,8 @@ function pickCaseFromTranscript(){
 async function autoPickCase(){
   autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on")return;
-  if(!caseList.length)await fetchCases(true);               // ver1.20 案件が空なら先に読み込む
-  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.20 今日の会議が書いてあればそれを使う
+  if(!caseList.length)await fetchCases(true);               // ver1.21 案件が空なら先に読み込む
+  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.21 今日の会議が書いてあればそれを使う
     const c=caseList.find(x=>x.key===casesToday.key);
     if(c){ autoPickDone=true;applyCase(c,casesToday.event?("今日の予定："+casesToday.event):"今日の予定");
       toast(`前提メモを自動で読み込みました：${c.name}`);logd("autocase(today)",c.name,casesToday.event||"");return; }
@@ -510,7 +510,7 @@ function minutesTextAll(){
     "【依頼・決定】",tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n")||"（なし）","",
     "【全文】",entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")].join("\n");
 }
-function downloadMinutes(){                                 // ver1.20 GAS未設定でも手元にファイルで残す
+function downloadMinutes(){                                 // ver1.21 GAS未設定でも手元にファイルで残す
   if(entries.length<3){toast("記録が短いため保存しません");return}
   const d=new Date(startedAt||Date.now());
   const name=`mtg_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}.txt`;
@@ -821,6 +821,34 @@ function unverifiedNumbers(text){
   while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
   return [...out];
 }
+// ver1.21 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
+const NEG_WORDS=["未着","未定","未決","未受領","未提出","未確定","未完了","未回答","保留","届いていない","来ていない","もらえていない","いただけていない","決まっていない","出ていない"];
+const POS_WORDS=["届いて","受け取","受領","完了","済み","済んで","進めて","着手","決まり","決定し","確定し","終わって","いただいて","もらって","来ました","出ています"];
+const STOP_WORDS=["前提","メモ","場合","内容","確認","対応","予定","今回","以下","こちら","先方","自分","相手","こと","もの","ため","ところ","とおり","について","として"];
+function memoNegFacts(){
+  const out=[];
+  for(const raw of String(cfg.memo||"").split("\n")){
+    const line=raw.trim(); if(!line)continue;
+    const neg=NEG_WORDS.find(w=>line.indexOf(w)>=0); if(!neg)continue;
+    const toks=(line.match(/[A-Za-z]{2,}|[ァ-ヶー]{2,}|[一-龥]{2,}/g)||[])
+      .filter(t=>t.length>=2&&!NEG_WORDS.includes(t)&&!POS_WORDS.includes(t)&&!STOP_WORDS.includes(t));
+    if(toks.length)out.push({line,neg,toks:[...new Set(toks)]});
+  }
+  return out;
+}
+function conflictingClaims(text){
+  const facts=memoNegFacts(); if(!facts.length)return [];
+  const hits=[];
+  for(const sent of String(text||"").split(/[。\n]/)){
+    if(!sent.trim())continue;
+    if(!POS_WORDS.some(w=>sent.indexOf(w)>=0))continue;
+    for(const f of facts){
+      const hit=f.toks.find(t=>sent.indexOf(t)>=0);
+      if(hit&&!hits.some(h=>h.line===f.line))hits.push({line:f.line,token:hit});
+    }
+  }
+  return hits;
+}
 let noteStamp="";
 function showNote(r,restoring,first,final){
   lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
@@ -830,10 +858,17 @@ function showNote(r,restoring,first,final){
   r.stamp=noteStamp;const _l=latLog[latLog.length-1];
   $("noteStamp").textContent=noteStamp+((_l&&_l.first!=null)?`　${(_l.first/1000).toFixed(1)}秒`:"");
   if(final||restoring){
-    const bad=unverifiedNumbers([r.say?.[0],r.say?.[1],r.ask].filter(Boolean).join(" "));
-    if(bad.length){ $("nNum").style.display="";
-      $("nNum").textContent=`この数字は前提メモにも会話にもありません：${bad.join("、")}　口に出す前に必ず確認してください`;
-      if(navigator.vibrate)navigator.vibrate([100,60,100]); logd("unverified numbers",bad.join(",")); }
+    const cueText=[r.say?.[0],r.say?.[1],r.ask].filter(Boolean).join(" ");
+    const bad=unverifiedNumbers(cueText);
+    const conf=conflictingClaims(cueText);
+    const msgs=[];
+    if(bad.length)msgs.push(`この数字は前提メモにも会話にもありません：${bad.join("、")}　口に出す前に必ず確認してください`);
+    for(const c of conf)msgs.push(`前提メモと逆のことを言っています。メモの記載：${c.line}`);
+    if(msgs.length){ $("nNum").style.display="";
+      $("nNum").innerHTML=msgs.map(m=>`<div>${esc(m)}</div>`).join("");
+      if(navigator.vibrate)navigator.vibrate([100,60,100]);
+      if(bad.length)logd("unverified numbers",bad.join(","));
+      if(conf.length)logd("memo conflict",conf.map(c=>c.token).join(",")); }
     else $("nNum").style.display="none";
   }
   if(r.flag){const changed=$("alerts").textContent!==r.flag;$("alertCard").style.display="";$("alerts").innerHTML=`<li>${esc(r.flag)}</li>`;if(changed&&navigator.vibrate)navigator.vibrate(120)}
@@ -1013,7 +1048,10 @@ async function runCue(){
 ・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
 ・金額・日付・件数・期限などの数字は、前提メモか会話の書き起こしに出てきたものをそのまま使う。足し算や掛け算をして新しい数字を作らない
 ・前提メモにない数字を求められたら、数字を言わずに「確認のうえ、本日中にメールでご回答します」と返す案にする。概算やおおよその額も言わない
-・会話に出ていない事実を作らない`),
+・会話に出ていない事実を作らない
+・前提メモに「未着」「未定」「未決」「保留」「未確定」と書かれている項目を、「届いている」「済み」「完了」「進めている」「決まった」と言い換えない。前提メモの記載を最優先し、会話でそれが覆っていなければ、書かれているとおりに答える
+・自分側の状況（依頼を受け取ったか、着手したか、納品したか、決まったか）は、前提メモか会話に出てきたことだけを言う。出ていなければ断定せず、確認して折り返す言い方にする
+・「いえ」「はい」で相手の認識を否定・肯定するときは、その根拠が前提メモか会話にあるか確かめてから書く。根拠がなければ断定しない`),
 `【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
       full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full);
         if(r.say[0]){ if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);renderLatLog();} showNote(r,false,!shown);shown=true;} },ac.signal);
@@ -1070,7 +1108,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
-fetchCases(true);                                            // ver1.20 起動時に案件マスタを黙って読み込む
+fetchCases(true);                                            // ver1.21 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
 if("serviceWorker" in navigator)window.addEventListener("load",()=>{
