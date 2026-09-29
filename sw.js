@@ -2,8 +2,8 @@
 // 画面の殻（index.html・アイコン）だけをキャッシュする。
 // index.html は常にネットワーク優先で、失敗したときだけキャッシュを返す（更新が遅れないようにするため）。
 // APIへの通信（Deepgram / OpenAI / Anthropic / Jev中継）は一切キャッシュしない。
-const CACHE = "mtg-cue-v2";
-const SHELL = ["/", "/index.html", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/manifest.webmanifest", "/cases.json"];
+const CACHE = "mtg-cue-v3";
+const SHELL = ["/", "/index.html", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
