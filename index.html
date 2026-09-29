@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29h -->
+<!-- BUILD_TAG: 2026-09-29i -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.23 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.24 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -286,7 +286,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.23 / BUILD_TAG 2026-09-29h</div>
+  <div class="foot">mtg_cue ver1.24 / BUILD_TAG 2026-09-29i</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -307,7 +307,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29h");
+console.log("BUILD_TAG: 2026-09-29i");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -373,14 +373,14 @@ async function gasGet(action,extra){
   if(!d.ok)throw new Error(d.error||"GASエラー");
   return d;
 }
-async function fetchCasesFile(){                           // ver1.23 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
+async function fetchCasesFile(){                           // ver1.24 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
   const r=await fetch("cases.json?ts="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("cases.json "+r.status);
   const d=await r.json();
   if(!Array.isArray(d.cases))throw new Error("cases.json の形式が不正です");
   return d;
 }
-let casesToday=null;                                        // ver1.23 cases.json に書かれた「今日の会議」
+let casesToday=null;                                        // ver1.24 cases.json に書かれた「今日の会議」
 async function fetchCases(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
@@ -451,8 +451,8 @@ function pickCaseFromTranscript(){
 async function autoPickCase(){
   autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on")return;
-  if(!caseList.length)await fetchCases(true);               // ver1.23 案件が空なら先に読み込む
-  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.23 今日の会議が書いてあればそれを使う
+  if(!caseList.length)await fetchCases(true);               // ver1.24 案件が空なら先に読み込む
+  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.24 今日の会議が書いてあればそれを使う
     const c=caseList.find(x=>x.key===casesToday.key);
     if(c){ autoPickDone=true;applyCase(c,casesToday.event?("今日の予定："+casesToday.event):"今日の予定");
       toast(`前提メモを自動で読み込みました：${c.name}`);logd("autocase(today)",c.name,casesToday.event||"");return; }
@@ -510,7 +510,7 @@ function minutesTextAll(){
     "【依頼・決定】",tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n")||"（なし）","",
     "【全文】",entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")].join("\n");
 }
-function downloadMinutes(){                                 // ver1.23 GAS未設定でも手元にファイルで残す
+function downloadMinutes(){                                 // ver1.24 GAS未設定でも手元にファイルで残す
   if(entries.length<3){toast("記録が短いため保存しません");return}
   const d=new Date(startedAt||Date.now());
   const name=`mtg_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}.txt`;
@@ -561,6 +561,13 @@ function renderHistory(){
 }
 $("btnHist").onclick=()=>{renderHistory();$("histSheet").classList.add("open")};
 $("btnHistClose").onclick=()=>$("histSheet").classList.remove("open");
+let staleSession=false;
+function isStale(savedAt){
+  if(!savedAt)return true;
+  const a=new Date(savedAt),b=new Date();
+  if(a.toDateString()!==b.toDateString())return true;        // 日付が違えば別の会議
+  return (b-a)>4*3600*1000;                                  // 4時間以上あいていても別の会議
+}
 function restoreSession(){
   let d;try{d=JSON.parse(localStorage.getItem("mc_session")||"null")}catch(_){}
   if(!d||!d.entries||!d.entries.length)return false;
@@ -572,7 +579,10 @@ function restoreSession(){
   $("clock").textContent=(()=>{const x=Math.floor((d.elapsed||0)/1000);return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")})();
   $("btnMin").disabled=entries.length<3;
   const when=new Date(d.savedAt);
-  setStatus(`前回の内容を復元しました（${when.getHours()}:${String(when.getMinutes()).padStart(2,"0")}保存）。「開始」で続きから再開できます。`,"");
+  staleSession=isStale(d.savedAt);                           // ver1.24 日付が変わっていたら続きにしない
+  setStatus(staleSession
+    ? `${when.getMonth()+1}月${when.getDate()}日の記録が残っています。「開始」で新しい会議として始めます（前回分は履歴に残ります）。`
+    : `前回の内容を復元しました（${when.getHours()}:${String(when.getMinutes()).padStart(2,"0")}保存）。「開始」で続きから再開できます。`,"");
   return true;
 }
 
@@ -582,8 +592,9 @@ async function start(){
   const sttKeyOk=cfg.stt==="openai"?!!cfg.oaKey:!!cfg.dgKey;
   if(!sttKeyOk||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
-  if(entries.length&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
-  if(!resume){archiveSession();minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
+  if(entries.length&&!staleSession&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
+  if(staleSession&&entries.length)toast("前回は別の日の記録のため、新しい会議として始めます");
+  if(!resume){archiveSession();staleSession=false;minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=(cfg.mode==="pc"||cfg.stt==="openai");summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;if(cfg.mode==="pc")calDone=true;}
   try{
     if(cfg.mode==="pc"){
@@ -702,7 +713,7 @@ function onOa(role,m){
   if(m.type==="conversation.item.input_audio_transcription.completed"){
     oaPartial[role]="";const text=(m.transcript||"").trim();if(!text)return;
     const r=role==="mix"?"other":role;
-    entries.push({t:(Date.now()-t0)/1000,role:r,spk:0,text});
+    if(!addEntry((Date.now()-t0)/1000,r,0,text))return;
     if(r==="other"){lastOtherFinalAt=Date.now();pickCaseFromTranscript()}
     removeInterim();renderLog();renderLatest();saveSession();
     if(r==="other"&&calDone)scheduleCue(0);
@@ -752,6 +763,39 @@ function openDeepgram(role,stream,diarize){
 }
 window.addEventListener("online",()=>{if(running)toast("ネットワークが復帰しました")});
 window.addEventListener("offline",()=>{if(running)toast("ネットワークが切れました。復帰後に自動で再接続します")});
+// ver1.24 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
+const JUNK_RE=/^(日本語の会議の文字起こし|ご視聴ありがとうございました|ご清聴ありがとうございました|チャンネル登録[^。]*|おわり|終わり|Thank you\.?|Thanks for watching\.?|you|音楽|拍手|\(音楽\)|\[音楽\])$/i;
+function bigrams(x){const s=new Set();for(let i=0;i<x.length-1;i++)s.add(x.slice(i,i+2));return s}
+function simRatio(a,b){
+  a=a.replace(/[\s、。,.!?！？「」]/g,"");b=b.replace(/[\s、。,.!?！？「」]/g,"");
+  if(!a||!b)return 0; if(a===b)return 1;
+  if(Math.min(a.length,b.length)<4)return a===b?1:0;
+  const A=bigrams(a),B=bigrams(b);let c=0;for(const x of A)if(B.has(x))c++;
+  return 2*c/(A.size+B.size);
+}
+function addEntry(t,role,spk,text){
+  text=String(text||"").trim();
+  if(!text)return false;
+  if(JUNK_RE.test(text))return false;                      // 文字起こしの定型ゴミ
+  if(!/[\p{L}\p{N}]/u.test(text))return false;              // 記号だけ
+  const last=entries[entries.length-1];
+  if(last&&last.role===role&&last.text===text&&t-last.t<3)return false;  // 同じ発話の重複
+  if(role==="self"){                                       // スピーカー音をマイクが拾った分を落とす
+    for(let i=entries.length-1;i>=0&&i>entries.length-30;i--){
+      const e=entries[i];
+      if(Math.abs(e.t-t)>5)break;
+      if(e.role==="other"&&simRatio(e.text,text)>0.7){logd("echo除去",text.slice(0,20));return false}
+    }
+  }else{                                                   // 直前の自分の発話を相手側が拾い直した場合は自分側を消す
+    for(let i=entries.length-1;i>=0&&i>entries.length-30;i--){
+      const e=entries[i];
+      if(Math.abs(e.t-t)>5)break;
+      if(e.role==="self"&&simRatio(e.text,text)>0.7){entries.splice(i,1);logd("echo除去(自分)",text.slice(0,20));break}
+    }
+  }
+  entries.push({t,role,spk,text});
+  return true;
+}
 function onDg(role,m){
   if(m.type!=="Results"||paused)return;
   const alt=m.channel?.alternatives?.[0];if(!alt||!alt.transcript)return;
@@ -764,7 +808,7 @@ function onDg(role,m){
   for(const g of groups){
     const text=g.words.join("").trim();if(!text)continue;
     const r=role==="mix"?(selfSpk!==null&&g.spk===selfSpk?"self":"other"):role;
-    entries.push({t,role:r,spk:g.spk,text});
+    if(!addEntry(t,r,g.spk,text))continue;
     if(role==="mix"&&calibrating)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
     if(r==="other")gotOther=true;
   }
@@ -821,11 +865,11 @@ function unverifiedNumbers(text){
   while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
   return [...out];
 }
-// ver1.23 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
+// ver1.24 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
 const NEG_WORDS=["未着","未定","未決","未受領","未提出","未確定","未完了","未回答","保留","届いていない","来ていない","もらえていない","いただけていない","決まっていない","出ていない"];
 const POS_WORDS=["届いて","受け取","受領","完了","済み","済んで","進めて","着手","決まり","決定し","確定し","終わって","いただいて","もらって","来ました","出ています"];
 const STOP_WORDS=["前提","メモ","場合","内容","確認","対応","予定","今回","以下","こちら","先方","自分","相手","こと","もの","ため","ところ","とおり","について","として"];
-function negWindows(){                                      // ver1.23 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
+function negWindows(){                                      // ver1.24 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
   const out=[];
   for(const raw of String(cfg.memo||"").split("\n")){
     const line=raw.trim(); if(!line)continue;
@@ -1097,7 +1141,7 @@ answersは自分がそのまま口に出せる日本語（各80文字以内）�
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus(running?"聞き取り中":"停止中",running?"live":"");
 };
-function transcriptChunks(limit){                            // ver1.23 長い会議は分割して要約してからまとめる
+function transcriptChunks(limit){                            // ver1.24 長い会議は分割して要約してからまとめる
   const out=[];let cur="";
   for(const e of entries){
     const line=`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}\n`;
@@ -1155,7 +1199,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
-fetchCases(true);                                            // ver1.23 起動時に案件マスタを黙って読み込む
+fetchCases(true);                                            // ver1.24 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
 if("serviceWorker" in navigator)window.addEventListener("load",()=>{
