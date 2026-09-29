@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29j -->
+<!-- BUILD_TAG: 2026-09-29k -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.25 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.26 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -291,7 +291,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.25 / BUILD_TAG 2026-09-29j</div>
+  <div class="foot">mtg_cue ver1.26 / BUILD_TAG 2026-09-29k</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -312,7 +312,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29j");
+console.log("BUILD_TAG: 2026-09-29k");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -378,14 +378,14 @@ async function gasGet(action,extra){
   if(!d.ok)throw new Error(d.error||"GASエラー");
   return d;
 }
-async function fetchCasesFile(){                           // ver1.25 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
+async function fetchCasesFile(){                           // ver1.26 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
   const r=await fetch("cases.json?ts="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("cases.json "+r.status);
   const d=await r.json();
   if(!Array.isArray(d.cases))throw new Error("cases.json の形式が不正です");
   return d;
 }
-let casesToday=null;                                        // ver1.25 cases.json に書かれた「今日の会議」
+let casesToday=null;                                        // ver1.26 cases.json に書かれた「今日の会議」
 async function fetchCases(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
@@ -456,8 +456,8 @@ function pickCaseFromTranscript(){
 async function autoPickCase(){
   autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on")return;
-  if(!caseList.length)await fetchCases(true);               // ver1.25 案件が空なら先に読み込む
-  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.25 今日の会議が書いてあればそれを使う
+  if(!caseList.length)await fetchCases(true);               // ver1.26 案件が空なら先に読み込む
+  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.26 今日の会議が書いてあればそれを使う
     const c=caseList.find(x=>x.key===casesToday.key);
     if(c){ autoPickDone=true;applyCase(c,casesToday.event?("今日の予定："+casesToday.event):"今日の予定");
       toast(`前提メモを自動で読み込みました：${c.name}`);logd("autocase(today)",c.name,casesToday.event||"");return; }
@@ -515,7 +515,7 @@ function minutesTextAll(){
     "【依頼・決定】",tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n")||"（なし）","",
     "【全文】",entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")].join("\n");
 }
-function downloadMinutes(){                                 // ver1.25 GAS未設定でも手元にファイルで残す
+function downloadMinutes(){                                 // ver1.26 GAS未設定でも手元にファイルで残す
   if(entries.length<3){toast("記録が短いため保存しません");return}
   const d=new Date(startedAt||Date.now());
   const name=`mtg_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}.txt`;
@@ -584,7 +584,7 @@ function restoreSession(){
   $("clock").textContent=(()=>{const x=Math.floor((d.elapsed||0)/1000);return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")})();
   $("btnMin").disabled=entries.length<3;
   const when=new Date(d.savedAt);
-  staleSession=isStale(d.savedAt);                           // ver1.25 日付が変わっていたら続きにしない
+  staleSession=isStale(d.savedAt);                           // ver1.26 日付が変わっていたら続きにしない
   setStatus(staleSession
     ? `${when.getMonth()+1}月${when.getDate()}日の記録が残っています。「開始」で新しい会議として始めます（前回分は履歴に残ります）。`
     : `前回の内容を復元しました（${when.getHours()}:${String(when.getMinutes()).padStart(2,"0")}保存）。「開始」で続きから再開できます。`,"");
@@ -768,7 +768,7 @@ function openDeepgram(role,stream,diarize){
 }
 window.addEventListener("online",()=>{if(running)toast("ネットワークが復帰しました")});
 window.addEventListener("offline",()=>{if(running)toast("ネットワークが切れました。復帰後に自動で再接続します")});
-// ver1.25 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
+// ver1.26 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
 const JUNK_RE=/^(日本語の会議の文字起こし|ご視聴ありがとうございました|ご清聴ありがとうございました|チャンネル登録[^。]*|おわり|終わり|Thank you\.?|Thanks for watching\.?|you|音楽|拍手|\(音楽\)|\[音楽\])$/i;
 function bigrams(x){const s=new Set();for(let i=0;i<x.length-1;i++)s.add(x.slice(i,i+2));return s}
 function simRatio(a,b){
@@ -870,11 +870,11 @@ function unverifiedNumbers(text){
   while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
   return [...out];
 }
-// ver1.25 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
+// ver1.26 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
 const NEG_WORDS=["未着","未定","未決","未受領","未提出","未確定","未完了","未回答","保留","届いていない","来ていない","もらえていない","いただけていない","決まっていない","出ていない"];
 const POS_WORDS=["届いて","受け取","受領","完了","済み","済んで","進めて","着手","決まり","決定し","確定し","終わって","いただいて","もらって","来ました","出ています"];
 const STOP_WORDS=["前提","メモ","場合","内容","確認","対応","予定","今回","以下","こちら","先方","自分","相手","こと","もの","ため","ところ","とおり","について","として"];
-function negWindows(){                                      // ver1.25 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
+function negWindows(){                                      // ver1.26 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
   const out=[];
   for(const raw of String(cfg.memo||"").split("\n")){
     const line=raw.trim(); if(!line)continue;
@@ -892,7 +892,7 @@ function negWindows(){                                      // ver1.25 「未着
   return out;
 }
 const SELF_CLAIMS=["進めており","進めています","進行中です","対応済み","対応しました","完了しています","完了しました","納品済み","納品しました","提出済み","提出しました","着手して","受け取っています","受け取りました","届いています","決まっています","決まりました","確認済み","設定済み","送付済み","作成済み","管理しています","実施しています"];
-function selfAssertions(text){                              // ver1.25 自分側の状況を断定していないか
+function selfAssertions(text){                              // ver1.26 自分側の状況を断定していないか
   const hits=[];
   for(const sent of String(text||"").split(/[。\n]/)){
     const w=SELF_CLAIMS.find(x=>sent.indexOf(x)>=0);
@@ -1159,7 +1159,7 @@ answersは自分がそのまま口に出せる日本語（各80文字以内）�
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus(running?"聞き取り中":"停止中",running?"live":"");
 };
-function transcriptChunks(limit){                            // ver1.25 長い会議は分割して要約してからまとめる
+function transcriptChunks(limit){                            // ver1.26 長い会議は分割して要約してからまとめる
   const out=[];let cur="";
   for(const e of entries){
     const line=`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}\n`;
@@ -1172,7 +1172,7 @@ function transcriptChunks(limit){                            // ver1.25 長い�
 const MIN_HEAD=`会議の書き起こしから、そのまま人に送れる自然な日本語の議事録を作ります。
 ・マークダウン記号（#、*、-、|、**など）は一切使わない。見出しは「■ 決まったこと」のように■だけを付けた1行にし、箇条書きは「・」を使う
 ・項目は「概要」「決まったこと」「相手からの要望・条件」「自分の回答・保留にしたこと」「次のアクション（誰が・いつまでに）」「確認が必要なこと」の順。該当する内容がない項目は見出しごと省く。「記載なし」「確認できず」のような空欄の説明は書かない
-・冒頭に日付・参加者を1〜2行で書く（前提メモに相手の名前があればそれを使う。日付は${DATE}）
+・冒頭に日付・参加者を1〜2行で書く（前提メモに相手の名前があればそれを使う。日付は__DATE__）
 ・書き起こしの誤変換は文脈と前提メモから正しい語に直す。事実と推測を混ぜず、推測は「〜と思われる」と書く
 ・金額は書き起こしか前提メモに出てきたものだけを書く。自分で計算して新しい金額を作らない
 ・「会議中に検出された依頼・決定事項」は見落としを防ぐための手がかり。該当する項目に反映し、書き起こしと食い違う場合は書き起こしを優先する
@@ -1182,7 +1182,7 @@ $("btnMin").onclick=async()=>{
   if(!entries.length){toast("書き起こしがありません");return}
   deepBusy=true;setStatus("議事録を作成中…","think");
   const tagText=tags.length?tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n"):"（なし）";
-  const head=MIN_HEAD.replace("${DATE}",new Date().toLocaleDateString("ja-JP"));
+  const head=MIN_HEAD.replace("__DATE__",new Date().toLocaleDateString("ja-JP"));
   try{
     const chunks=transcriptChunks(12000);
     let body;
@@ -1217,7 +1217,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
-fetchCases(true);                                            // ver1.25 起動時に案件マスタを黙って読み込む
+fetchCases(true);                                            // ver1.26 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
 if("serviceWorker" in navigator)window.addEventListener("load",()=>{
@@ -1232,7 +1232,7 @@ function refreshInstallBtn(){$("btnInstall").style.display=isStandalone()?"none"
 refreshInstallBtn();
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;refreshInstallBtn();});
 window.addEventListener("appinstalled",()=>{installEvt=null;$("btnInstall").style.display="none";toast("インストールしました")});
-$("btnInstall").onclick=async()=>{                           // ver1.25 対応していない環境では手順を出す
+$("btnInstall").onclick=async()=>{                           // ver1.26 対応していない環境では手順を出す
   if(installEvt){ installEvt.prompt(); await installEvt.userChoice; installEvt=null; refreshInstallBtn(); return; }
   const ua=navigator.userAgent;
   const msg=/iPhone|iPad|iPod/.test(ua)
