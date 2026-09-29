@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-09-29f -->
+<!-- BUILD_TAG: 2026-09-29g -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.21 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.22 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -286,7 +286,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.21 / BUILD_TAG 2026-09-29f</div>
+  <div class="foot">mtg_cue ver1.22 / BUILD_TAG 2026-09-29g</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -307,7 +307,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-09-29f");
+console.log("BUILD_TAG: 2026-09-29g");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -373,14 +373,14 @@ async function gasGet(action,extra){
   if(!d.ok)throw new Error(d.error||"GASエラー");
   return d;
 }
-async function fetchCasesFile(){                           // ver1.21 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
+async function fetchCasesFile(){                           // ver1.22 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
   const r=await fetch("cases.json?ts="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("cases.json "+r.status);
   const d=await r.json();
   if(!Array.isArray(d.cases))throw new Error("cases.json の形式が不正です");
   return d;
 }
-let casesToday=null;                                        // ver1.21 cases.json に書かれた「今日の会議」
+let casesToday=null;                                        // ver1.22 cases.json に書かれた「今日の会議」
 async function fetchCases(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
@@ -451,8 +451,8 @@ function pickCaseFromTranscript(){
 async function autoPickCase(){
   autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on")return;
-  if(!caseList.length)await fetchCases(true);               // ver1.21 案件が空なら先に読み込む
-  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.21 今日の会議が書いてあればそれを使う
+  if(!caseList.length)await fetchCases(true);               // ver1.22 案件が空なら先に読み込む
+  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.22 今日の会議が書いてあればそれを使う
     const c=caseList.find(x=>x.key===casesToday.key);
     if(c){ autoPickDone=true;applyCase(c,casesToday.event?("今日の予定："+casesToday.event):"今日の予定");
       toast(`前提メモを自動で読み込みました：${c.name}`);logd("autocase(today)",c.name,casesToday.event||"");return; }
@@ -510,7 +510,7 @@ function minutesTextAll(){
     "【依頼・決定】",tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n")||"（なし）","",
     "【全文】",entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")].join("\n");
 }
-function downloadMinutes(){                                 // ver1.21 GAS未設定でも手元にファイルで残す
+function downloadMinutes(){                                 // ver1.22 GAS未設定でも手元にファイルで残す
   if(entries.length<3){toast("記録が短いため保存しません");return}
   const d=new Date(startedAt||Date.now());
   const name=`mtg_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}.txt`;
@@ -821,33 +821,39 @@ function unverifiedNumbers(text){
   while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
   return [...out];
 }
-// ver1.21 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
+// ver1.22 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
 const NEG_WORDS=["未着","未定","未決","未受領","未提出","未確定","未完了","未回答","保留","届いていない","来ていない","もらえていない","いただけていない","決まっていない","出ていない"];
 const POS_WORDS=["届いて","受け取","受領","完了","済み","済んで","進めて","着手","決まり","決定し","確定し","終わって","いただいて","もらって","来ました","出ています"];
 const STOP_WORDS=["前提","メモ","場合","内容","確認","対応","予定","今回","以下","こちら","先方","自分","相手","こと","もの","ため","ところ","とおり","について","として"];
-function memoNegFacts(){
+function negWindows(){                                      // ver1.22 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
   const out=[];
   for(const raw of String(cfg.memo||"").split("\n")){
     const line=raw.trim(); if(!line)continue;
-    const neg=NEG_WORDS.find(w=>line.indexOf(w)>=0); if(!neg)continue;
-    const toks=(line.match(/[A-Za-z]{2,}|[ァ-ヶー]{2,}|[一-龥]{2,}/g)||[])
-      .filter(t=>t.length>=2&&!NEG_WORDS.includes(t)&&!POS_WORDS.includes(t)&&!STOP_WORDS.includes(t));
-    if(toks.length)out.push({line,neg,toks:[...new Set(toks)]});
+    for(const neg of NEG_WORDS){
+      let i=-1;
+      while((i=line.indexOf(neg,i+1))>=0){
+        const w=line.slice(Math.max(0,i-40),Math.min(line.length,i+neg.length+40));
+        let t=w; for(const n of NEG_WORDS)t=t.split(n).join("　");
+        const toks=(t.match(/[A-Za-z]{3,}|[ァ-ヶー]{3,}|[一-龥]{3,}/g)||[])
+          .filter(x=>!STOP_WORDS.includes(x)&&!"月日年時分".includes(x[0]));
+        if(toks.length)out.push({win:w,toks:[...new Set(toks)]});
+      }
+    }
   }
   return out;
 }
 function conflictingClaims(text){
-  const facts=memoNegFacts(); if(!facts.length)return [];
+  const facts=negWindows(); if(!facts.length)return [];
   const hits=[];
   for(const sent of String(text||"").split(/[。\n]/)){
     if(!sent.trim())continue;
     if(!POS_WORDS.some(w=>sent.indexOf(w)>=0))continue;
     for(const f of facts){
       const hit=f.toks.find(t=>sent.indexOf(t)>=0);
-      if(hit&&!hits.some(h=>h.line===f.line))hits.push({line:f.line,token:hit});
+      if(hit&&!hits.some(h=>h.win===f.win))hits.push({win:f.win,token:hit});
     }
   }
-  return hits;
+  return hits.slice(0,2);
 }
 let noteStamp="";
 function showNote(r,restoring,first,final){
@@ -863,7 +869,7 @@ function showNote(r,restoring,first,final){
     const conf=conflictingClaims(cueText);
     const msgs=[];
     if(bad.length)msgs.push(`この数字は前提メモにも会話にもありません：${bad.join("、")}　口に出す前に必ず確認してください`);
-    for(const c of conf)msgs.push(`前提メモと逆のことを言っています。メモの記載：${c.line}`);
+    for(const c of conf)msgs.push(`前提メモと逆かもしれません。メモの記載：…${c.win}…`);
     if(msgs.length){ $("nNum").style.display="";
       $("nNum").innerHTML=msgs.map(m=>`<div>${esc(m)}</div>`).join("");
       if(navigator.vibrate)navigator.vibrate([100,60,100]);
@@ -1108,7 +1114,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
-fetchCases(true);                                            // ver1.21 起動時に案件マスタを黙って読み込む
+fetchCases(true);                                            // ver1.22 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
 if("serviceWorker" in navigator)window.addEventListener("load",()=>{
