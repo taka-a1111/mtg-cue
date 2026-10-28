@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-10-28b -->
+<!-- BUILD_TAG: 2026-10-28c -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.30 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.31 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -151,7 +151,17 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 .sheet .btns{display:flex;gap:10px;margin-top:8px}
 .sheet .btns button{flex:1;padding:14px;font-size:16px;font-weight:700}
 .sheet .btns .save{background:#2f6f4f}
-/* ver1.30 通話モード：マイクを使わず、前提メモを読むためだけの画面 */
+/* ver1.31 開始時の確認（続きから／新しく） */
+.askwrap{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:30;padding:16px}
+.askwrap.on{display:flex}
+.askbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:440px;width:100%;padding:20px 18px}
+.askbox h2{font-size:18px;margin:0 0 10px}
+.askbox p{font-size:14px;color:var(--muted);line-height:1.7;margin:0 0 16px}
+.askbox button{display:block;width:100%;padding:15px 12px;font-size:16px;font-weight:700;border-radius:10px;margin-bottom:10px;text-align:left}
+.askbox button small{display:block;font-size:12px;font-weight:400;opacity:.85;margin-top:3px}
+.askbox .primary{background:#2f6f4f}
+.askbox .ghost{background:transparent;border:1px solid var(--line);color:var(--muted);text-align:center;margin-bottom:0}
+/* ver1.31 通話モード：マイクを使わず、前提メモを読むためだけの画面 */
 #callSheet .in{max-width:860px}
 #callSheet .csec{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
 #callSheet .csec>summary{cursor:pointer;list-style:none;padding:13px 14px;font-size:17px;font-weight:700;background:#262c36}
@@ -312,7 +322,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.30 / BUILD_TAG 2026-10-28b</div>
+  <div class="foot">mtg_cue ver1.31 / BUILD_TAG 2026-10-28c</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -338,10 +348,17 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   <div class="btns"><button id="btnMinClose">閉じる</button><button id="btnMinDl">ファイルに保存</button><button class="save" id="btnMinCopy">コピー</button></div>
 </div></div>
 
+<div class="askwrap" id="askResume"><div class="askbox">
+  <h2>前回の記録が残っています</h2>
+  <p id="askInfo"></p>
+  <button class="primary" id="askNew">新しい会議を始める<small>前回の記録は「履歴」に保存されます</small></button>
+  <button id="askCont">前回の会議の続きから再開<small>同じ会議を途中で止めた場合だけ選んでください</small></button>
+  <button class="ghost" id="askCancel">やめる</button>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-10-28b");
+console.log("BUILD_TAG: 2026-10-28c");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -377,7 +394,7 @@ $("jevTh").oninput=e=>{$("thVal").textContent=e.target.value};
 let curAuto="off";
 function setAuto(v){curAuto=v;[...$("autoSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v))}
 $("autoSeg").onclick=e=>{const b=e.target.closest("button");if(b)setAuto(b.dataset.v)};
-let curChat="off";                                          // ver1.30 雑談スキップ
+let curChat="off";                                          // ver1.31 雑談スキップ
 function setChat(v){curChat=v;[...$("chatSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v))}
 $("chatSeg").onclick=e=>{const b=e.target.closest("button");if(b)setChat(b.dataset.v)};
 
@@ -410,14 +427,14 @@ async function gasGet(action,extra){
   if(!d.ok)throw new Error(d.error||"GASエラー");
   return d;
 }
-async function fetchCasesFile(){                           // ver1.30 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
+async function fetchCasesFile(){                           // ver1.31 任意。cases.json を置いた場合だけ使う（機微情報は置かない）
   const r=await fetch("cases.json?ts="+Date.now(),{cache:"no-store"});
   if(!r.ok)throw new Error("cases.json "+r.status);
   const d=await r.json();
   if(!Array.isArray(d.cases))throw new Error("cases.json の形式が不正です");
   return d;
 }
-let casesToday=null;                                        // ver1.30 cases.json に書かれた「今日の会議」
+let casesToday=null;                                        // ver1.31 cases.json に書かれた「今日の会議」
 async function fetchCases(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
@@ -442,7 +459,7 @@ function applyCase(c,how){
   return true;
 }
 $("btnCaseRefresh").onclick=()=>fetchCases(false);
-/* ---- ver1.30 通話モード ---- */
+/* ---- ver1.31 通話モード ---- */
 const CALL_WARN=/注意|言ってはいけない|答え方|金額|数字/;
 const CALL_ASK=/確認|聞く|質問|電話|会議/;
 function renderCallSheet(){
@@ -518,8 +535,8 @@ function pickCaseFromTranscript(){
 async function autoPickCase(){
   autoPickDone=false;autoPickUntil=Date.now()+120000;      // 開始から2分間は会話からの判定を受け付ける
   if(curAuto!=="on")return;
-  if(!caseList.length)await fetchCases(true);               // ver1.30 案件が空なら先に読み込む
-  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.30 今日の会議が書いてあればそれを使う
+  if(!caseList.length)await fetchCases(true);               // ver1.31 案件が空なら先に読み込む
+  if(casesToday&&casesToday.key&&casesToday.date===todayStr()){   // ver1.31 今日の会議が書いてあればそれを使う
     const c=caseList.find(x=>x.key===casesToday.key);
     if(c){ autoPickDone=true;applyCase(c,casesToday.event?("今日の予定："+casesToday.event):"今日の予定");
       toast(`前提メモを自動で読み込みました：${c.name}`);logd("autocase(today)",c.name,casesToday.event||"");return; }
@@ -533,7 +550,7 @@ async function autoPickCase(){
   }catch(e){ logd("autocase error",String(e.message||e)); }
 }
 let silenceTimer=null;
-function watchSilence(stream){                               // ver1.30 マイク・共有音声が無音のままなら原因を知らせる
+function watchSilence(stream){                               // ver1.31 マイク・共有音声が無音のままなら原因を知らせる
   clearInterval(silenceTimer);
   if(!stream||!stream.getAudioTracks().length)return;
   try{
@@ -600,13 +617,13 @@ function minutesTextAll(){
     "【依頼・決定】",tags.map(x=>`[${stamp(x.t)}] ${x.kind==="request"?"依頼":"決定確認"}: ${x.text}`).join("\n")||"（なし）","",
     "【全文】",entries.map(e=>`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}`).join("\n")].join("\n");
 }
-function downloadMinutes(){                                 // ver1.30 GAS未設定でも手元にファイルで残す
+function downloadMinutes(){                                 // ver1.31 GAS未設定でも手元にファイルで残す
   if(entries.length<3){toast("記録が短いため保存しません");return}
   const d=new Date(startedAt||Date.now());
   const name=`mtg_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}.txt`;
   const blob=new Blob([minutesTextAll()],{type:"text/plain;charset=utf-8"});
   const mobile=/iPhone|iPad|Android/i.test(navigator.userAgent);
-  if(mobile&&navigator.canShare){                            // ver1.30 スマホは共有シートで保存（画面を切り替えない）
+  if(mobile&&navigator.canShare){                            // ver1.31 スマホは共有シートで保存（画面を切り替えない）
     try{const f=new File([blob],name,{type:"text/plain"});
       if(navigator.canShare({files:[f]})){navigator.share({files:[f],title:name}).catch(()=>{});return}}catch(_){}
   }
@@ -618,7 +635,7 @@ function downloadMinutes(){                                 // ver1.30 GAS未設
 }
 async function saveToDrive(reason){
   if(entries.length<3)return;
-  if(!cfg.gasUrl)return;                                    // ver1.30 自動ダウンロードはしない（スマホで画面が切り替わるため）
+  if(!cfg.gasUrl)return;                                    // ver1.31 自動ダウンロードはしない（スマホで画面が切り替わるため）
   if(driveBusy)return;driveBusy=true;
   const payload={token:cfg.gasToken||"",id:String(startedAt||t0),title:sessionTitle(),startedAt:startedAt||Date.now(),elapsed:t0?Date.now()-t0:0,
     summary:summaryPts,minutes:minutesText,memo:cfg.memo,
@@ -659,6 +676,18 @@ function renderHistory(){
 $("btnHist").onclick=()=>{renderHistory();$("histSheet").classList.add("open")};
 $("btnHistClose").onclick=()=>$("histSheet").classList.remove("open");
 let staleSession=false;
+function askResumeDialog(){                                 // ver1.31 confirm() をやめ、選択肢を言葉で示す
+  return new Promise(res=>{
+    const last=entries[entries.length-1];
+    const st=startedAt?new Date(startedAt):null;
+    const when=st?`${st.getMonth()+1}月${st.getDate()}日 ${st.getHours()}:${String(st.getMinutes()).padStart(2,"0")}開始`:"開始時刻不明";
+    const who=(caseList.find(x=>x.key===($("topCase").value||""))||{}).name;
+    $("askInfo").textContent=`${when}の会議（発言${entries.length}件${who?"・"+who:""}）の記録があります。`+(last?`最後の発言：「${String(last.text).slice(0,30)}」`:"");
+    const done=v=>{$("askResume").classList.remove("on");res(v)};
+    $("askNew").onclick=()=>done("new");$("askCont").onclick=()=>done("resume");$("askCancel").onclick=()=>done(null);
+    $("askResume").classList.add("on");$("askNew").focus();
+  });
+}
 function isStale(savedAt){
   if(!savedAt)return true;
   const a=new Date(savedAt),b=new Date();
@@ -676,7 +705,7 @@ function restoreSession(){
   $("clock").textContent=(()=>{const x=Math.floor((d.elapsed||0)/1000);return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")})();
   $("btnMin").disabled=entries.length<3;
   const when=new Date(d.savedAt);
-  staleSession=isStale(d.savedAt);                           // ver1.30 日付が変わっていたら続きにしない
+  staleSession=isStale(d.savedAt);                           // ver1.31 日付が変わっていたら続きにしない
   setStatus(staleSession
     ? `${when.getMonth()+1}月${when.getDate()}日の記録が残っています。「開始」で新しい会議として始めます（前回分は履歴に残ります）。`
     : `前回の内容を復元しました（${when.getHours()}:${String(when.getMinutes()).padStart(2,"0")}保存）。「開始」で続きから再開できます。`,"");
@@ -689,7 +718,11 @@ async function start(){
   const sttKeyOk=cfg.stt==="openai"?!!cfg.oaKey:!!cfg.dgKey;
   if(!sttKeyOk||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
-  if(entries.length&&!staleSession&&confirm("前回の続きとして再開しますか？\n（キャンセル＝新しい会議として開始）")) resume=true;
+  if(entries.length&&!staleSession){
+    const ans=await askResumeDialog();
+    if(ans===null)return;
+    resume=(ans==="resume");
+  }
   if(staleSession&&entries.length)toast("前回は別の日の記録のため、新しい会議として始めます");
   if(!resume){archiveSession();staleSession=false;minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=true;summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];moneyLog=[];keyPins=[];renderMoney();renderKeys();lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;calDone=true;}
@@ -710,11 +743,11 @@ async function start(){
     }
   }catch(e){toast("音声を取得できません: "+e.message);cleanupMedia();return}
   running=true;paused=false;if(!resume)t0=Date.now();
-  watchSilence(streams[0]);                                  // ver1.30 音が入っていないことを知らせる
+  watchSilence(streams[0]);                                  // ver1.31 音が入っていないことを知らせる
   $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").style.display="none";$("btnPause").style.display="";$("btnPause").textContent="一時停止";$("btnPause").classList.remove("on");
   clockTimer=setInterval(tick,1000);
   idleWarnAt=0;
-  idleTimer=setInterval(()=>{                                // ver1.30 停止し忘れの防止
+  idleTimer=setInterval(()=>{                                // ver1.31 停止し忘れの防止
     if(!running||paused||!lastOtherFinalAt)return;
     const mins=(Date.now()-lastOtherFinalAt)/60000;
     if(mins>=10&&Date.now()-idleWarnAt>10*60000){
@@ -872,7 +905,7 @@ function openDeepgram(role,stream,diarize){
 }
 window.addEventListener("online",()=>{if(running)toast("ネットワークが復帰しました")});
 window.addEventListener("offline",()=>{if(running)toast("ネットワークが切れました。復帰後に自動で再接続します")});
-// ver1.30 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
+// ver1.31 雑音の取り込みを止める。文字起こしの定型ゴミと、スピーカー音をマイクが拾った二重取りを落とす。
 const JUNK_RE=/^(日本語の会議の文字起こし|ご視聴ありがとうございました|ご清聴ありがとうございました|チャンネル登録[^。]*|おわり|終わり|Thank you\.?|Thanks for watching\.?|you|音楽|拍手|\(音楽\)|\[音楽\])$/i;
 function bigrams(x){const s=new Set();for(let i=0;i<x.length-1;i++)s.add(x.slice(i,i+2));return s}
 function simRatio(a,b){
@@ -975,11 +1008,11 @@ function unverifiedNumbers(text){
   while((m=re.exec(text))){ const n=normNum(m[0]); if(n.length>=2 && hay.indexOf(n)<0) out.add(m[0]); }
   return [...out];
 }
-// ver1.30 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
+// ver1.31 前提メモで「未着・未定・未決」と書かれている事を「済み・届いている」と言い切る誤りを止める
 const NEG_WORDS=["未着","未定","未決","未受領","未提出","未確定","未完了","未回答","保留","届いていない","来ていない","もらえていない","いただけていない","決まっていない","出ていない"];
 const POS_WORDS=["届いて","受け取","受領","完了","済み","済んで","進めて","着手","決まり","決定し","確定し","終わって","いただいて","もらって","来ました","出ています"];
 const STOP_WORDS=["前提","メモ","場合","内容","確認","対応","予定","今回","以下","こちら","先方","自分","相手","こと","もの","ため","ところ","とおり","について","として"];
-function negWindows(){                                      // ver1.30 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
+function negWindows(){                                      // ver1.31 「未着」等の周辺だけを見る。行全体を見ると誤検知が増える
   const out=[];
   for(const raw of String(cfg.memo||"").split("\n")){
     const line=raw.trim(); if(!line)continue;
@@ -997,7 +1030,7 @@ function negWindows(){                                      // ver1.30 「未着
   return out;
 }
 const SELF_CLAIMS=["進めており","進めています","進行中です","対応済み","対応しました","完了しています","完了しました","納品済み","納品しました","提出済み","提出しました","着手して","受け取っています","受け取りました","届いています","決まっています","決まりました","確認済み","設定済み","送付済み","作成済み","管理しています","実施しています"];
-function selfAssertions(text){                              // ver1.30 自分側の状況を断定していないか
+function selfAssertions(text){                              // ver1.31 自分側の状況を断定していないか
   const hits=[];
   for(const sent of String(text||"").split(/[。\n]/)){
     const w=SELF_CLAIMS.find(x=>sent.indexOf(x)>=0);
@@ -1018,7 +1051,7 @@ function conflictingClaims(text){
   }
   return hits.slice(0,2);
 }
-/* ---- ver1.30 金額レーダーと重要ピン ---- */
+/* ---- ver1.31 金額レーダーと重要ピン ---- */
 const MONEY_RE=/([0-9０-９][0-9０-９,，]*)\s*(万円|万|円)/g;
 const KEY_RE=/[0-9０-９][0-9０-９,，]*\s*(万円|万|円)|契約|単価|見積|請求|支払|納期|締め|期日|外します|決めました|決定|やめ(ます|る)|終わりに|至急|いつまで|お願いできます/;
 const ASK_RE=/(ですか|でしょうか|ますか|ませんか|いかが|どう(で|し|なん)|いくら|いつ|どこ|なぜ|どちら|教えて|お願い|可能|ください|くれます|よろしい)[?？]?$|[?？]/;
@@ -1321,7 +1354,7 @@ answersは自分がそのまま口に出せる日本語（各80文字以内）�
   }catch(e){toast(e.message)}
   deepBusy=false;setStatus(running?"聞き取り中":"停止中",running?"live":"");
 };
-function transcriptChunks(limit){                            // ver1.30 長い会議は分割して要約してからまとめる
+function transcriptChunks(limit){                            // ver1.31 長い会議は分割して要約してからまとめる
   const out=[];let cur="";
   for(const e of entries){
     const line=`[${stamp(e.t)}] ${e.role==="self"?"自分":"相手"}: ${e.text}\n`;
@@ -1381,7 +1414,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
-fetchCases(true);                                            // ver1.30 起動時に案件マスタを黙って読み込む
+fetchCases(true);                                            // ver1.31 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
 if("serviceWorker" in navigator)window.addEventListener("load",()=>{
@@ -1396,7 +1429,7 @@ function refreshInstallBtn(){$("btnInstall").style.display=isStandalone()?"none"
 refreshInstallBtn();
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;refreshInstallBtn();});
 window.addEventListener("appinstalled",()=>{installEvt=null;$("btnInstall").style.display="none";toast("インストールしました")});
-$("btnInstall").onclick=async()=>{                           // ver1.30 対応していない環境では手順を出す
+$("btnInstall").onclick=async()=>{                           // ver1.31 対応していない環境では手順を出す
   if(installEvt){ installEvt.prompt(); await installEvt.userChoice; installEvt=null; refreshInstallBtn(); return; }
   const ua=navigator.userAgent;
   const msg=/iPhone|iPad|iPod/.test(ua)
