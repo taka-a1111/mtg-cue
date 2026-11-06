@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-10-28c -->
+<!-- BUILD_TAG: 2026-11-07a -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.31 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.32 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -322,7 +322,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.31 / BUILD_TAG 2026-10-28c</div>
+  <div class="foot">mtg_cue ver1.32 / BUILD_TAG 2026-11-07a</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -358,7 +358,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-10-28c");
+console.log("BUILD_TAG: 2026-11-07a");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -599,7 +599,12 @@ function saveSession(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{
 }catch(e){}},1500)}
 function clearSession(){try{localStorage.removeItem("mc_session")}catch(_){}}
 let minutesText="";
-function sessionTitle(){const m=(cfg.memo||"").split("\n")[0].replace(/^相手[：:]\s*/,"").slice(0,30);return m||"会議"}
+function sessionTitle(){                                    // ver1.32 前提メモの1行目が「【会議】」の見出しだと全部同じ題名になっていた
+  const c=caseList.find(x=>x.key===($("topCase").value||$("caseSel").value||""));
+  if(c&&c.name)return String(c.name).slice(0,30);
+  const ls=(cfg.memo||"").split("\n").map(x=>x.replace(/^【[^】]*】\s*/,"").replace(/^相手[：:]\s*/,"").trim()).filter(Boolean);
+  return (ls[0]||"会議").slice(0,30);
+}
 function fmtDate(ts){const d=new Date(ts);return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`}
 function loadHistory(){try{return JSON.parse(localStorage.getItem("mc_history")||"[]")}catch(_){return[]}}
 function archiveSession(){
@@ -633,6 +638,10 @@ function downloadMinutes(){                                 // ver1.31 GAS未設
   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
   toast("議事録をファイルに保存しました");
 }
+function driveFail(msg){                                    // ver1.32 失敗をトーストだけで終わらせない（停止後は画面に残す）
+  toast(msg);
+  if(!running)setStatus("停止しました。"+msg+"。議事録画面の「ファイルに保存」で手元に残してください。","");
+}
 async function saveToDrive(reason){
   if(entries.length<3)return;
   if(!cfg.gasUrl)return;                                    // ver1.31 自動ダウンロードはしない（スマホで画面が切り替わるため）
@@ -645,8 +654,8 @@ async function saveToDrive(reason){
     const r=await fetch(cfg.gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
     const d=await r.json();
     if(d.ok){toast("ドライブに保存しました"+(reason?"（"+reason+"）":""));logd("drive ok",d.name)}
-    else{toast("ドライブ保存に失敗: "+(d.error||"").slice(0,60));logd("drive error",d.error)}
-  }catch(e){toast("ドライブ保存に失敗（URLか公開設定を確認）");logd("drive fetch error",String(e))}
+    else{driveFail("ドライブ保存に失敗: "+(d.error||"").slice(0,60));logd("drive error",d.error)}
+  }catch(e){driveFail("ドライブ保存に失敗（URLか公開設定を確認）");logd("drive fetch error",String(e))}
   driveBusy=false;
 }
 function renderHistory(){
