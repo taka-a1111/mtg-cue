@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-10a -->
+<!-- BUILD_TAG: 2026-11-10b -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.34 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.35 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -23,8 +23,8 @@
 <style>
 :root{
   --bg:#1b2028; --panel:#252c37; --panel2:#2e3744; --line:#3a4453;
-  --text:#edf0f3; --muted:#98a4b3; --self:#7d8b9b;
-  --note:#fff3b0; --note-ink:#2a2410; --note-dim:#8a7a3a;
+  --text:#edf0f3; --muted:#a3aebc; --self:#9aa7b6;
+  --note:#fff3b0; --note-ink:#1f1a08; --note-dim:#6b5d24; --k:1;
   --ok:#7fd0a3; --warn:#f5b642; --danger:#ef7d7d; --accent:#8fb8ff;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -44,7 +44,16 @@ input,select,textarea{font-family:inherit}
 .dot.think{background:var(--accent)}
 @media (prefers-reduced-motion:no-preference){.dot.live{animation:pulse 1.4s infinite}}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(239,125,125,.45)}70%{box-shadow:0 0 0 9px rgba(239,125,125,0)}100%{box-shadow:0 0 0 0 rgba(239,125,125,0)}}
-.top .st{font-size:13px;color:var(--muted);flex:1;line-height:1.35}
+.top .strow{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.top .st{font-size:13px;color:var(--muted);flex:1;min-width:0;line-height:1.35}
+.gear.hist{white-space:nowrap}
+@media (max-width:899px){
+  .top{flex-wrap:wrap;row-gap:8px;gap:8px}
+  .top .strow{order:2;flex:1 1 100%}
+  .top .st{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .top .topsel{flex:1;min-width:0;max-width:none;padding:8px 8px;font-size:14px}
+  .top .gear.hist{padding:8px 10px}
+}
 .top .time{font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted)}
 .gear{background:transparent;font-size:22px;padding:2px 6px;color:var(--muted)}
 .gear.hist{font-size:13px;border:1px solid var(--line);border-radius:8px;padding:4px 10px}
@@ -73,41 +82,45 @@ input,select,textarea{font-family:inherit}
 }
 
 .card{background:var(--panel);border-radius:14px;padding:12px 14px}
-.card h2{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px}
+.card h2{font-size:13px;font-weight:500;color:var(--muted);margin-bottom:6px}
 .card.alert{background:#3b3120;border-left:4px solid var(--warn)}
 .card.alert h2{color:var(--warn)}
 .card.deep{border-left:4px solid var(--ok)}
 .card.expert{border-left:4px solid #6aa9ff}
 .card.expert h2{color:#6aa9ff}
-.card.expert .ex-topic{font-size:13px;opacity:.75;margin-bottom:4px}
-.card.expert .ex-ans{font-size:18px;font-weight:600;line-height:1.5;margin-bottom:6px}
+.card.expert .ex-topic{font-size:14px;color:var(--muted);margin-bottom:4px}
+.card.expert .ex-ans{font-size:calc(21px*var(--k));font-weight:700;line-height:1.5;margin-bottom:10px}
+.card.expert ul.pts li{font-size:calc(16px*var(--k));line-height:1.55}
 .card.expert ul.pts li::before{background:#6aa9ff}
-.card.expert .ex-lim{color:var(--warn);font-size:14px;margin-top:6px}
-.card.expert .ex-ask{font-size:14px;margin-top:6px;opacity:.9}
-.card.expert .ex-conf{font-size:12px;opacity:.7;margin-left:6px}
+.card.expert .ex-lim{color:var(--warn);font-size:15px;margin-top:10px;line-height:1.5}
+.card.expert .ex-ask{font-size:15px;margin-top:6px;line-height:1.5}
+.card.expert .ex-conf{font-size:13px;margin-left:8px;color:var(--text)}
 .card.deep h2{color:var(--ok)}
 .empty{color:var(--muted);font-size:14px}
 
 /* カンペ本体 */
-.note{background:var(--note);color:var(--note-ink);border-radius:6px 6px 14px 6px;padding:14px 16px 12px;
+.note{background:var(--note);color:var(--note-ink);border-radius:6px 6px 14px 6px;padding:24px 16px 12px;
   box-shadow:0 8px 24px rgba(0,0,0,.35);position:sticky;top:0;z-index:3;min-height:120px;overflow-wrap:anywhere}
 .note::before{content:"";position:absolute;left:14px;right:14px;top:-6px;height:12px;background:rgba(0,0,0,.08);border-radius:2px}
-.note .intent{font-size:14px;color:var(--note-dim);margin-bottom:8px;line-height:1.45}
-.note .say{font-size:21px;font-weight:700;line-height:1.5;margin-bottom:8px}
-.note .say2{font-size:16px;font-weight:500;line-height:1.5;color:#4a4020;margin-bottom:8px;padding-left:12px;border-left:3px solid #d9c96a}
-.note .ask{font-size:14px;color:#3f5b7a;line-height:1.45}
+.note .intent{font-size:calc(14px*var(--k));color:var(--note-dim);margin-top:8px;line-height:1.45}
+.note .intent::before{content:"相手の意図："}
+.note .say{font-size:calc(25px*var(--k));font-weight:700;line-height:1.45;margin-bottom:10px}
+@media (min-width:900px){.note .say{font-size:calc(28px*var(--k))}}
+.note .say2{font-size:calc(17px*var(--k));font-weight:500;line-height:1.5;color:#3a3114;margin-bottom:8px;padding-left:12px;border-left:3px solid #c9b445}
+.note .say2::before{content:"別案：";color:var(--note-dim);font-size:.82em}
+.note .ask{font-size:calc(15px*var(--k));color:#27466a;line-height:1.45}
 .note .ask::before{content:"確認：";color:var(--note-dim)}
 .note .numwarn{margin-top:10px;padding:8px 10px;background:#c0392b;color:#fff;border-radius:8px;
   font-size:14px;line-height:1.5;font-weight:700}
 .note .numwarn .soft2{display:block;margin-top:6px;background:#8a6d1f;color:#fff;padding:6px 8px;border-radius:6px;font-weight:600}
 .note .numwarn.only-soft{background:#8a6d1f}
 .note.soft{background:#efe6c8;box-shadow:0 4px 12px rgba(0,0,0,.25)}
-.note.soft .say{font-size:17px;font-weight:500}
-.note .stamp{position:absolute;right:12px;top:10px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
+.note.soft .say{font-size:calc(19px*var(--k));font-weight:500}
+.note .stamp{position:absolute;right:12px;top:5px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
 .note .waiting{font-size:15px;color:var(--note-dim);padding:12px 0}
 .note .next{display:none;margin-top:10px;padding:8px 10px;border-radius:8px;background:#fff7c2;border:2px solid #b8860b;cursor:pointer}
 .note .next .lab{display:block;font-size:12px;color:var(--note-dim);margin-bottom:2px}
-.note .next .txt{display:block;font-size:17px;font-weight:700;line-height:1.45}
+.note .next .txt{display:block;font-size:calc(18px*var(--k));font-weight:700;line-height:1.45}
 .note .pin{display:none;margin-top:8px;font-size:12px;font-weight:700;color:#8a2c1f}
 .card.expert .ex-next{display:none;margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid #6aa9ff;font-size:15px;line-height:1.5;cursor:pointer}
 .calbox{display:none;margin-top:10px;gap:8px;flex-wrap:wrap}
@@ -117,11 +130,11 @@ input,select,textarea{font-family:inherit}
 .calbox .skip{background:#5c5340;color:#fff}
 .calbox p{width:100%;font-size:14px;color:var(--note-ink);line-height:1.5}
 
-.latest{font-size:18px;line-height:1.5;font-weight:500;min-height:2.6em}
-.latest .old{display:block;color:var(--muted);font-weight:400;font-size:14px;margin-bottom:4px}
+.latest{font-size:calc(19px*var(--k));line-height:1.5;font-weight:500;min-height:2.6em}
+.latest .old{display:block;color:var(--muted);font-weight:400;font-size:15px;margin-bottom:4px}
 
 ul.pts{list-style:none;display:flex;flex-direction:column;gap:6px}
-ul.pts li{font-size:15px;line-height:1.5;padding-left:14px;position:relative}
+ul.pts li{font-size:16px;line-height:1.5;padding-left:14px;position:relative}
 ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--accent)}
 .card.deep ul.pts li::before{background:var(--ok)}
 .card.alert ul.pts li::before{background:var(--warn)}
@@ -129,9 +142,9 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 .log{display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:42vh;overscroll-behavior:contain}
 .col.right .card{display:flex;flex-direction:column;min-height:0;flex:1}
 .col.right .log{flex:1;max-height:none;min-height:0}
-.log .line{font-size:14px;line-height:1.5;padding:6px 10px;border-radius:10px;background:var(--panel2)}
-.log .line.me{background:transparent;color:var(--self);font-size:13px}
-.log .line .who{font-size:11px;color:var(--muted);margin-right:6px}
+.log .line{font-size:15px;line-height:1.55;padding:7px 10px;border-radius:10px;background:var(--panel2)}
+.log .line.me{background:transparent;color:var(--self);font-size:14px}
+.log .line .who{font-size:12px;color:var(--muted);margin-right:6px}
 .log .line.interim{opacity:.5}
 .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
 
@@ -192,9 +205,9 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <body>
 
 <div class="top">
-  <div class="dot" id="dot"></div>
+  <div class="strow"><div class="dot" id="dot"></div>
   <div class="st" id="status">停止中。右下の開始で聞き取りを始めます。</div>
-  <div class="time" id="clock">00:00</div>
+  <div class="time" id="clock">00:00</div></div>
   <select id="topCase" class="topsel" title="案件（前提メモ）"><option value="">案件なし</option></select>
   <button class="gear hist" id="btnCall" aria-label="通話モード">通話</button><button class="gear hist" id="btnInstall" aria-label="インストール">インストール</button>
   <button class="gear hist" id="btnHist" aria-label="履歴">履歴</button>
@@ -208,10 +221,10 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <span class="stamp" id="noteStamp"></span>
       <div class="waiting" id="noteWait">相手が話し始めると、ここにカンペが出ます。</div>
       <div class="calbox" id="calbox"><p id="calMsg">登録しなくてもカンペは出ます。自分の発言を相手と分けたいときだけ、「登録開始」を押して5〜10秒話し、「登録完了」を押してください。</p><button class="reg" id="btnCal">登録開始</button><button class="skip" id="btnCalSkip">登録しない（全部相手）</button></div>
-      <div class="intent" id="nIntent" style="display:none"></div>
       <div class="say" id="nSay" style="display:none"></div>
       <div class="say2" id="nSay2" style="display:none"></div>
       <div class="ask" id="nAsk" style="display:none"></div>
+      <div class="intent" id="nIntent" style="display:none"></div>
       <div class="numwarn" id="nNum" style="display:none"></div>
       <div class="next" id="noteNext"><span class="lab">次のカンペ（タップで切り替え）</span><span class="txt" id="noteNextTxt"></span></div>
       <div class="pin" id="notePin">固定中（もう一度タップで解除）</div>
@@ -289,6 +302,9 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <button data-v="pc">PC：タブ音声＋マイク</button>
     </div>
     <small id="modeHint"></small></div>
+  <div class="f"><label>カンペの文字の大きさ</label>
+    <div class="seg" id="fsSeg"><button data-v="std">標準</button><button data-v="lg">大</button><button data-v="xl">特大</button></div>
+    <small>押すとすぐ変わります。この端末にだけ保存されます。</small></div>
   <div class="f"><label>文字起こしエンジン</label>
     <div class="seg" id="sttSeg"><button data-v="deepgram">Deepgram（話者分離あり）</button><button data-v="openai">OpenAI gpt-4o-transcribe（日本語精度）</button></div>
     <small id="sttHint"></small></div>
@@ -350,7 +366,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.34 / BUILD_TAG 2026-11-10a</div>
+  <div class="foot">mtg_cue ver1.35 / BUILD_TAG 2026-11-10b</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -386,7 +402,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-10a");
+console.log("BUILD_TAG: 2026-11-10b");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -415,6 +431,13 @@ function setStt(v){curStt=v;[...$("sttSeg").children].forEach(b=>b.classList.tog
    ?"日本語に強い。話者分離がないので、スマホモードでは全員を相手として扱います（自分の声の除外は不可）。PCモードはタブ音声＝相手／マイク＝自分で分離できます。"
    :"話者分離あり。スマホモードで自分の声を除外できます。日本語の精度はやや落ちます。";}
 $("sttSeg").onclick=e=>{const b=e.target.closest("button");if(b)setStt(b.dataset.v)};
+let curFs="std";                                           // ver1.35 カンペの文字の大きさ
+function setFs(v){if(!["std","lg","xl"].includes(v))v="std";curFs=v;
+  document.documentElement.style.setProperty("--k",{std:1,lg:1.15,xl:1.3}[v]);
+  [...$("fsSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  try{localStorage.setItem("mc_fs",v)}catch(_){}}
+$("fsSeg").onclick=e=>{const b=e.target.closest("button");if(b)setFs(b.dataset.v)};
+{let v="std";try{v=localStorage.getItem("mc_fs")||"std"}catch(_){}setFs(v)}
 let curJev="off";
 function setJev(v){curJev=v;[...$("jevSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===v))}
 $("jevSeg").onclick=e=>{const b=e.target.closest("button");if(b)setJev(b.dataset.v)};
