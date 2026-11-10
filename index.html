@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-07b -->
+<!-- BUILD_TAG: 2026-11-10a -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.33 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.34 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -105,6 +105,11 @@ input,select,textarea{font-family:inherit}
 .note.soft .say{font-size:17px;font-weight:500}
 .note .stamp{position:absolute;right:12px;top:10px;font-size:11px;color:var(--note-dim);font-variant-numeric:tabular-nums}
 .note .waiting{font-size:15px;color:var(--note-dim);padding:12px 0}
+.note .next{display:none;margin-top:10px;padding:8px 10px;border-radius:8px;background:#fff7c2;border:2px solid #b8860b;cursor:pointer}
+.note .next .lab{display:block;font-size:12px;color:var(--note-dim);margin-bottom:2px}
+.note .next .txt{display:block;font-size:17px;font-weight:700;line-height:1.45}
+.note .pin{display:none;margin-top:8px;font-size:12px;font-weight:700;color:#8a2c1f}
+.card.expert .ex-next{display:none;margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid #6aa9ff;font-size:15px;line-height:1.5;cursor:pointer}
 .calbox{display:none;margin-top:10px;gap:8px;flex-wrap:wrap}
 .calbox.on{display:flex}
 .calbox button{padding:12px 16px;font-weight:700;font-size:15px}
@@ -208,6 +213,8 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <div class="say2" id="nSay2" style="display:none"></div>
       <div class="ask" id="nAsk" style="display:none"></div>
       <div class="numwarn" id="nNum" style="display:none"></div>
+      <div class="next" id="noteNext"><span class="lab">次のカンペ（タップで切り替え）</span><span class="txt" id="noteNextTxt"></span></div>
+      <div class="pin" id="notePin">固定中（もう一度タップで解除）</div>
     </div>
 
     <div class="card alert" id="alertCard" style="display:none">
@@ -222,6 +229,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <ul class="pts" id="exPts"></ul>
       <div class="ex-lim" id="exLim" style="display:none"></div>
       <div class="ex-ask" id="exAsk" style="display:none"></div>
+      <div class="ex-next" id="exNext"></div>
     </div>
 
     <div class="card deep" id="deepCard" style="display:none">
@@ -342,7 +350,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.33 / BUILD_TAG 2026-11-07b</div>
+  <div class="foot">mtg_cue ver1.34 / BUILD_TAG 2026-11-10a</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -378,7 +386,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-07b");
+console.log("BUILD_TAG: 2026-11-10a");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -820,6 +828,7 @@ function resetUI(){
   $("latest").innerHTML='<span class="empty">まだ発言はありません</span>';
   $("summary").innerHTML='<li class="empty">会話が進むと自動で更新されます</li>';
   $("alertCard").style.display="none";$("deepCard").style.display="none";$("expertCard").style.display="none";lastExpertT=null;
+  curCue=null;pendCue=null;exCur=null;exPend=null;exWaiting=false;renderNext();refreshExNext();
   $("nNum").style.display="none";$("note").classList.remove("soft");$("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
   const h=cfg.mode==="pc"?"薄い行は自分の発言。":"薄い行は自分の発言（AIには「自分」として渡します）。行を長押し（PCは右クリック）で「これは自分の声」に切り替えられます。";
   $("hintM").textContent=h;$("hintP").textContent=h;
@@ -833,7 +842,7 @@ function tick(){const s=Math.floor((Date.now()-t0)/1000);
 function openDg(role,stream,diarize){ return cfg.stt==="openai"?openOpenAI(role,stream):openDeepgram(role,stream,diarize) }
 function openOpenAI(role,stream){
   const urls=["wss://api.openai.com/v1/realtime","wss://api.openai.com/v1/realtime?intent=transcription"];let ui=0;
-  const hint=(cfg.keyterms||"").split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).join("、");
+  const hint=(cfg.keyterms||"").split(/[,、\n]/).map(x=>x.trim()).filter(Boolean).slice(0,40).join("、"); // ver1.34 用語を詰め込みすぎると、無音のときに用語を並べた文を作ってしまう
   const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
   const src=audioCtx.createMediaStreamSource(stream);
   const proc=audioCtx.createScriptProcessor(4096,1,1);
@@ -880,17 +889,53 @@ function openOpenAI(role,stream){
   connect();
   return {close(){closed=true;clearTimeout(retryTimer);try{ws&&ws.close()}catch(_){}try{proc.disconnect();audioCtx.close()}catch(_){}}};
 }
-const oaPartial={};
+/* ---- ver1.34 文字起こしの作り話を落とす・相槌ではカンペを作り直さない ---- */
+const oaPartial={}, oaItems={};
+function ktList(){return (cfg.keyterms||"").split(/[,、\n]/).map(x=>x.trim()).filter(x=>x.length>=2)}
+function sttFake(text,durMs){                               // 無音や雑音から作られた、実在しない発言の見分け
+  const s=String(text).replace(/\s/g,""),n=s.length;
+  if(/会議の文字起こし|会議メモのテキスト起こし|用語リスト|用語[:：]/.test(text))return "指示文の写り込み";
+  if(durMs>0&&n>=10&&n/(durMs/1000)>14)return "音声の長さに対して文字が多すぎる";
+  if(n>=20){let hits=0,cov=0,rest=s.toLowerCase();
+    for(const k of ktList().map(x=>x.replace(/\s/g,"").toLowerCase()).sort((x,y)=>y.length-x.length)){
+      if(rest.includes(k)){hits++;const parts=rest.split(k);cov+=k.length*(parts.length-1);rest=parts.join("\u0000")}}
+    if(hits>=5&&cov/n>0.4)return "用語の羅列";}
+  return "";
+}
+const AIZUCHI_RE=/^(?:はい|ええ|うん|ふん|へえ|ほう|あ+|え+|えっと|おお|なるほど(?:です)?(?:ね)?|そう(?:です|なんです)?(?:ね|か|よね)?|確かに|たしかに|(?:わか|分か)りました|承知(?:いた)?しました|了解(?:です|しました)?|ありがとう(?:ございます|ございました)?|すみません|すいません|失礼(?:いた)?します|(?:よろしく)?お願い(?:いた)?します|大丈夫です|OK(?:です)?|オッケ(?:です)?|いいですね|ですね|ですよね)+$/i;
+function isAizuchi(text){const s=String(text).replace(/[\s、。,.!?！？…ー〜「」]/g,"");return s.length>0&&s.length<=24&&AIZUCHI_RE.test(s)}
+const QEND_RE=/(?:[^と]か|かね|かな|でしょう|ください)[。.？?！!]*$|[？?]$/;   // 質問で終わっていれば、間を待たずにカンペを作る
+function wantCue(text){
+  if(isAizuchi(text)&&curCue&&curCue.need&&Date.now()-curCue.shownAt<30000){logd("相槌のためカンペを据え置き",String(text).slice(0,20));return false}
+  return true;
+}
+function hasSelfChannel(){return cfg.mode==="pc"||selfSpk!==null}
+function isReadAloud(text){                                  // 自分の声を分けられないとき、カンペを読み上げた声を相手の発言にしない
+  if(hasSelfChannel()||!curCue||!lastNote||Date.now()-curCue.shownAt>30000)return false;
+  const cl=x=>String(x).replace(/[\s、。,.!?！？「」]/g,"");
+  const a=cl(text);if(a.length<8)return false;
+  const src=cl([lastNote.say?.[0],lastNote.say?.[1],lastNote.ask,$("exAns").textContent].filter(Boolean).join(""));
+  if(src.length<8)return false;
+  const A=bigrams(a),B=bigrams(src);let c=0;for(const x of A)if(B.has(x))c++;
+  return c/A.size>=0.6;
+}
 function onOa(role,m){
   if(paused)return;
+  if(m.type==="input_audio_buffer.speech_started"&&m.item_id){oaItems[role+m.item_id]={s:m.audio_start_ms};return}
+  if(m.type==="input_audio_buffer.speech_stopped"&&m.item_id){const it=oaItems[role+m.item_id];if(it)it.e=m.audio_end_ms;return}
   if(m.type==="conversation.item.input_audio_transcription.delta"&&m.delta){oaPartial[role]=(oaPartial[role]||"")+m.delta;if(role!=="self")showInterim(oaPartial[role]);return}
   if(m.type==="conversation.item.input_audio_transcription.completed"){
-    oaPartial[role]="";const text=(m.transcript||"").trim();if(!text)return;
-    const r=role==="mix"?"other":role;
+    oaPartial[role]="";const text=(m.transcript||"").trim();
+    const it=oaItems[role+m.item_id];delete oaItems[role+m.item_id];
+    if(!text)return;
+    const fake=sttFake(text,it&&it.e>it.s?it.e-it.s:0);
+    if(fake){logd("文字起こしを除外",fake,text.slice(0,30));if(role!=="self")removeInterim();return}
+    let r=role==="mix"?"other":role;
+    if(r==="other"&&isReadAloud(text)){r="self";logd("読み上げと判定",text.slice(0,20))}
     if(!addEntry((Date.now()-t0)/1000,r,0,text))return;
-    if(r==="other"){lastOtherFinalAt=Date.now();pickCaseFromTranscript()}
+    if(r==="other"){lastOtherFinalAt=Date.now();pickCaseFromTranscript()}else lastSelfAt=Date.now();
     removeInterim();renderLog();renderLatest();saveSession();
-    if(r==="other"&&calDone)scheduleCue(0);
+    if(r==="other"&&calDone&&wantCue(text))scheduleCue(0);
   }
 }
 function openDeepgram(role,stream,diarize){
@@ -974,22 +1019,23 @@ function addEntry(t,role,spk,text){
 function onDg(role,m){
   if(m.type!=="Results"||paused)return;
   const alt=m.channel?.alternatives?.[0];if(!alt||!alt.transcript)return;
-  if(!m.is_final){if(role!=="self")showInterim(alt.transcript);return}
+  if(!m.is_final){if(role!=="self")showInterim(alt.transcript);else lastSelfAt=Date.now();return}
   const groups=[];
   for(const w of alt.words||[]){const spk=w.speaker??0,g=groups[groups.length-1],tok=w.punctuated_word||w.word;
     if(g&&g.spk===spk)g.words.push(tok);else groups.push({spk,words:[tok]});}
   if(!groups.length)groups.push({spk:0,words:[alt.transcript]});
-  const t=(Date.now()-t0)/1000;let gotOther=false;
+  const t=(Date.now()-t0)/1000;let gotOther=false,otherTxt="";
   for(const g of groups){
     const text=g.words.join("").trim();if(!text)continue;
-    const r=role==="mix"?(selfSpk!==null&&g.spk===selfSpk?"self":"other"):role;
+    let r=role==="mix"?(selfSpk!==null&&g.spk===selfSpk?"self":"other"):role;
+    if(r==="other"&&!calibrating&&isReadAloud(text)){r="self";logd("読み上げと判定",text.slice(0,20))}
     if(!addEntry(t,r,g.spk,text))continue;
     if(role==="mix"&&calibrating)calChars[g.spk]=(calChars[g.spk]||0)+text.length;
-    if(r==="other")gotOther=true;
+    if(r==="other"){gotOther=true;otherTxt+=text}else lastSelfAt=Date.now();
   }
   if(gotOther){lastOtherFinalAt=Date.now();pickCaseFromTranscript()}
   removeInterim();renderLog();renderLatest();saveSession();
-  if(gotOther&&calDone){ if(m.speech_final) scheduleCue(0); else scheduleCue(); }
+  if(gotOther&&calDone&&wantCue(otherTxt)){ if(m.speech_final||QEND_RE.test(otherTxt.trim())) scheduleCue(0); else scheduleCue(); }
 }
 function finishCalibration(){
   const ks=Object.keys(calChars);
@@ -1134,6 +1180,43 @@ function renderKeys(){
   $("keyCard").style.display="";
   $("keyPts").innerHTML=keyPins.map(x=>`<li>${stamp(x.t)}　${esc(x.text)}</li>`).reverse().join("");
 }
+/* ================= 表示の保持（ver1.34） ================= */
+// 読んでいる途中のカンペを次のカンペで上書きしない。新しいカンペは「次のカンペ」欄にすぐ出し、読み終えるころに入れ替える。
+let cueGen=0, curCue=null, pendCue=null, lastSelfAt=0;
+const HOLD_GRACE=1500, HOLD_SELF=2500, HOLD_MAX=25000;
+function cueHoldMs(r){const n=((r.say&&r.say[0])||"").length;return Math.max(6000,Math.min(12000,2500+n*170))}
+function selfTalking(){return Date.now()-lastSelfAt<HOLD_SELF}
+function cueHeld(){
+  if(!curCue||!curCue.need)return false;
+  if(curCue.pinned)return true;
+  const age=Date.now()-curCue.shownAt;
+  if(age<HOLD_GRACE)return false;                          // 出た直後は、相手がまだ話している途中なので差し替える
+  return age<curCue.holdMs||(age<HOLD_MAX&&selfTalking());  // 読む時間のあいだと、自分が話しているあいだは動かさない
+}
+function renderNext(){
+  const el=$("noteNext");
+  if(pendCue&&pendCue.r.say&&pendCue.r.say[0]){$("noteNextTxt").textContent=pendCue.r.say[0];el.style.display="block"}
+  else el.style.display="none";
+  $("notePin").style.display=(curCue&&curCue.pinned)?"block":"none";
+}
+function putCue(r,gen,final){
+  curCue={gen,shownAt:Date.now(),need:r.needs_reply!==false,holdMs:cueHoldMs(r),pinned:false};
+  if(!final)$("nNum").style.display="none";
+  showNote(r,false,true,final);renderNext();
+}
+function presentCue(r,gen,final){
+  if(curCue&&curCue.gen===gen){                             // 表示中のカンペの続き
+    curCue.need=r.needs_reply!==false;curCue.holdMs=cueHoldMs(r);showNote(r,false,false,final);return}
+  if(cueHeld()){pendCue={r,gen,final};renderNext();return}
+  pendCue=null;putCue(r,gen,final);
+}
+function promoteCue(){if(!pendCue)return;const p=pendCue;pendCue=null;putCue(p.r,p.gen,p.final)}
+$("noteNext").onclick=e=>{e.stopPropagation();promoteCue()};
+$("note").addEventListener("click",e=>{                      // カンペをタップで固定／解除
+  if(e.target.closest("#calbox")||e.target.closest("#noteNext"))return;
+  if(!curCue||!curCue.need)return;
+  curCue.pinned=!curCue.pinned;curCue.pinAt=Date.now();renderNext();
+});
 let noteStamp="";
 function showNote(r,restoring,first,final){
   lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
@@ -1295,51 +1378,99 @@ function scheduleCue(delay){cueDirty=true;clearTimeout(cueTimer);
   cueTimer=setTimeout(runCue,(delay??cfg.pause)*1000)}
 
 /* ================= 専門の質問への答え（ver1.33） ================= */
-let lastExpertT=null, expertAbort=null;
+let lastExpertT=null, expertAbort=null, exGen=0, exCur=null, exPend=null, exWaiting=false;
+function parseExpertLines(txt){
+  const r={points:[]};
+  for(const raw of txt.split("\n")){const m=raw.trim().match(/^(専門|確度|話題|結論|理由|例|注意|逆質問)[:：]\s*(.*)$/);if(!m)continue;
+    const v=m[2].replace(/^(なし|不要|null)$/,"").trim();
+    if(m[1]==="専門"){if(/^要/.test(m[2]))r.expert=true;else if(/^不要/.test(m[2]))r.expert=false}
+    else if(m[1]==="確度")r.confidence=v;else if(m[1]==="話題")r.topic=v;else if(m[1]==="結論")r.answer=v;
+    else if(m[1]==="理由"){if(v)r.points.push(v)}else if(m[1]==="例")r.example=v;else if(m[1]==="注意")r.limits=v;else if(m[1]==="逆質問")r.ask=v;}
+  return r;
+}
+function renderExpert(r){
+  $("expertCard").style.display="";
+  $("exTopic").textContent=r.topic||"";
+  $("exAns").textContent=r.answer||"";
+  $("exConf").textContent=r.confidence?`確度 ${r.confidence}`:"";
+  $("exPts").innerHTML=[...(r.points||[]),...(r.example?["例："+r.example]:[])].map(a=>`<li>${esc(a)}</li>`).join("");
+  if(r.limits){$("exLim").textContent="言い切らない点："+r.limits;$("exLim").style.display=""}else $("exLim").style.display="none";
+  if(r.ask){$("exAsk").textContent="逆質問："+r.ask;$("exAsk").style.display=""}else $("exAsk").style.display="none";
+}
+function exHoldMs(r){const n=(r.answer||"").length+(r.points||[]).join("").length;return Math.max(8000,Math.min(20000,4000+n*120))}
+function exHeld(){
+  if(!exCur)return false;
+  const age=Date.now()-exCur.shownAt;
+  if(age<HOLD_GRACE)return false;
+  return age<exCur.holdMs||(age<HOLD_MAX&&selfTalking());
+}
+function refreshExNext(){
+  const el=$("exNext");
+  if(exPend){el.textContent="次の答え（タップで切り替え）："+(exPend.r.answer||"");el.style.display="block"}
+  else if(exWaiting&&exCur){el.textContent="次の答えを準備中…";el.style.display="block"}
+  else el.style.display="none";
+}
+function presentExpert(r,gen){
+  if(exCur&&exCur.gen===gen){exCur.holdMs=exHoldMs(r);renderExpert(r);return}
+  if(exHeld()){exPend={r,gen};refreshExNext();return}
+  exPend=null;exCur={gen,shownAt:Date.now(),holdMs:exHoldMs(r)};renderExpert(r);refreshExNext();
+}
+function promoteExpert(){if(!exPend)return;const p=exPend;exPend=null;exCur={gen:p.gen,shownAt:Date.now(),holdMs:exHoldMs(p.r)};renderExpert(p.r);refreshExNext()}
+$("exNext").onclick=()=>promoteExpert();
+setInterval(()=>{                                            // 読む時間が過ぎたら、待たせていた次の表示に入れ替える
+  if(curCue&&curCue.pinned&&Date.now()-curCue.pinAt>90000){curCue.pinned=false;renderNext()}
+  if(pendCue&&!cueHeld())promoteCue();
+  if(exPend&&!exHeld())promoteExpert();
+},300);
 async function runExpert(target,manual){
   if(!target)return;
   if(!manual&&lastExpertT===target.t)return;            // 同じ発言では1回だけ
   lastExpertT=target.t;
   if(expertAbort)expertAbort.abort();
-  const ac=new AbortController();expertAbort=ac;
-  $("expertCard").style.display="";$("exTopic").textContent="答えを準備中…";
-  ["exAns","exConf"].forEach(i=>$(i).textContent="");$("exPts").innerHTML="";
-  $("exLim").style.display="none";$("exAsk").style.display="none";
+  const ac=new AbortController();expertAbort=ac;const gen=++exGen;
+  let shown=false;
+  exWaiting=true;
+  if(exCur)refreshExNext();                               // 表示中の答えは消さずに待つ
+  else{$("expertCard").style.display="";$("exTopic").textContent="答えを準備中…";
+    ["exAns","exConf"].forEach(i=>$(i).textContent="");$("exPts").innerHTML="";
+    $("exLim").style.display="none";$("exAsk").style.display="none";}
+  const done=()=>{ if(ac!==expertAbort)return; exWaiting=false;refreshExNext(); if(!shown&&!exCur)$("expertCard").style.display="none"; };
   try{
-    const r0=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal:ac.signal,headers:{
-      "Content-Type":"application/json","x-api-key":cfg.aKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:cfg.mSmart,max_tokens:900,system:sysWithMemo(
-`あなたは会議中の「自分」の隣にいる専門家です。相手の直近の質問が専門知識（技術・制度・法律・業界の仕組み・やり方・用語・原因・比較）を問うものなら、自分がその場で落ち着いて答えられるように、答えの骨組みを渡します。必ずJSONのみ:
-{"expert":true,"topic":"何を聞かれているか（25文字以内）","answer":"そのまま口に出せる結論（70文字以内、会話体）","points":["理由・仕組み・手順（各50文字以内、2〜3個）"],"example":"相手に伝わる具体例（60文字以内、なければnull）","limits":"条件次第で変わる点・言い切らない方がよい点（60文字以内、なければnull）","ask":"相手の状況を確かめる逆質問（40文字以内）","confidence":"高|中|低"}
-専門知識の質問でなければ {"expert":false} だけを返す。
+    const txt=await claudeStream(cfg.mSmart,sysWithMemo(
+`あなたは会議中の「自分」の隣にいる専門家です。相手の直近の質問が専門知識（技術・制度・法律・業界の仕組み・やり方・用語・原因・比較）を問うものなら、自分がその場で落ち着いて答えられるように、答えの骨組みを渡します。次の行だけを、この順番と行頭のラベルで返してください。前置き・装飾・JSONは禁止。
+専門: 要 または 不要（専門知識の質問でなければ「専門: 不要」の1行だけを返して終える）
+確度: 高 または 中 または 低
+話題: 何を聞かれているか（25文字以内）
+結論: そのまま口に出せる結論（70文字以内、会話体）
+理由: 理由・仕組み・手順（50文字以内。この行を2〜3回くり返す）
+例: 相手に伝わる具体例（60文字以内、なければ「なし」）
+注意: 条件次第で変わる点・言い切らない方がよい点（60文字以内、なければ「なし」）
+逆質問: 相手の状況を確かめる逆質問（40文字以内）
 ・書き起こしは音声認識なので誤変換がある。文脈と用語リストから本来の質問を推定する
-・一般に確立した知識だけで答える。専門家同士でも意見が割れること、法令・料金・仕様・アルゴリズムなど最近変わり得ることは、limitsに「最新の情報を確認して回答」と書き、answerでは断定を避ける
-・自信がなければconfidenceを「低」にし、answerは「持ち帰って正確にお伝えします」と、分かっている範囲を一言添える形にする。知ったかぶりの答えを作らない
+・一般に確立した知識だけで答える。専門家同士でも意見が割れること、法令・料金・仕様・アルゴリズムなど最近変わり得ることは、「注意」の行に「最新の情報を確認して回答」と書き、「結論」では断定を避ける
+・自信がなければ確度を「低」にし、結論は「持ち帰って正確にお伝えします」と、分かっている範囲を一言添える形にする。知ったかぶりの答えを作らない
 ・自分の経験・実績・担当事例として語らない。実績に触れるのは前提メモに書かれているものだけ
 ・案件の金額・見積・納期・件数は作らない。公的な基準値など一般に公開された数字を使うときは、どこの基準かを添える
 ・前提メモに想定問答や方針があれば、それを最優先し、矛盾しない答えにする
 ・専門用語は相手に通じる言葉に言い換える`),
-      messages:[{role:"user",content:`【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(16)}\n\n【答えたい相手の発言】\n${target.text}`}]})});
-    if(!r0.ok)throw new Error("専門の答えの取得に失敗: "+r0.status);
-    const d=await r0.json();logUsage("expert",d.usage);
-    if(ac.signal.aborted)return;
-    const r=parseJSON((d.content||[]).map(c=>c.text||"").join(""));
-    if(!r.expert){$("expertCard").style.display="none";if(manual)logd("expert","専門の質問ではないと判定");return}
-    $("exTopic").textContent=r.topic||"";
-    $("exAns").textContent=r.answer||"";
-    $("exConf").textContent=r.confidence?`確度 ${r.confidence}`:"";
-    $("exPts").innerHTML=[...(r.points||[]),...(r.example?["例："+r.example]:[])].map(a=>`<li>${esc(a)}</li>`).join("");
-    if(r.limits){$("exLim").textContent="言い切らない点："+r.limits;$("exLim").style.display=""}
-    if(r.ask){$("exAsk").textContent="逆質問："+r.ask;$("exAsk").style.display=""}
-    logd("expert",r.topic||"",r.confidence||"");
-  }catch(e){ if(e.name!=="AbortError"){$("exTopic").textContent="専門の答えを作れませんでした";toast(e.message)} }
+`【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(16)}\n\n【答えたい相手の発言】\n${target.text}`,900,
+      full=>{ if(ac.signal.aborted)return; const r=parseExpertLines(full);
+        if(r.expert!==false&&r.answer){shown=true;presentExpert(r,gen)} },ac.signal);
+    if(!ac.signal.aborted){
+      const r=parseExpertLines(txt);
+      if(r.expert!==false&&r.answer){shown=true;presentExpert(r,gen);logd("expert",r.topic||"",r.confidence||"")}
+      else if(manual)logd("expert","専門の質問ではないと判定");
+      done();
+    }
+  }catch(e){ if(e.name!=="AbortError"){ toast(e.message);
+      if(!shown&&!exCur){exWaiting=false;$("exTopic").textContent="専門の答えを作れませんでした"} else done(); } }
   if(expertAbort===ac)expertAbort=null;
 }
 async function runCue(){
   if(!running||!cueDirty)return;
   if(cueBusy){cueTimer=setTimeout(runCue,300);return}
   cueBusy=true;cueDirty=false;$("dot").className="dot think";
-  const ac=new AbortController();cueAbort=ac;let shown=false;
+  const ac=new AbortController();cueAbort=ac;let shown=false;const gen=++cueGen;
   const anchor=lastOtherFinalAt||Date.now();          // 相手の発話が確定した時刻
   const rec={time:$("clock").textContent,text:"",jev:null,kind:null,model:null,first:null,done:null};
 
@@ -1375,12 +1506,12 @@ async function runCue(){
 `あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。${kind?"\n今の相手の発言は「"+JEV_KINDS[kind]+"」と判定されています。"+JEV_HINT[kind]:""}
 相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の7行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。
 返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
+専門: 要 または 不要（相手が技術・制度・法律・業界の仕組み・やり方・用語の意味・違い・原因・おすすめの方法など、専門知識での説明を求めている＝要。日程・金額・進捗・契約条件の質問や雑談＝不要）
 一言: 自分がそのまま口に出せる第一声（45文字以内。不要のときは相槌か短い受け止め）
 意図: 相手が本当に言いたいこと・求めていること（30文字以内）
 別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
 確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
 注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
-専門: 要 または 不要（相手が技術・制度・法律・業界の仕組み・やり方・用語の意味・違い・原因・おすすめの方法など、専門知識での説明を求めている＝要。日程・金額・進捗・契約条件の質問や雑談＝不要）
 ・書き起こしは音声認識なので誤変換や欠落がある。文脈と前提メモから本来の発言を推定して答える（例：「いつごらっぱらとる」→「いつから上がる」）
 ・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
 ・第一声は会話体で自然に。防御的・事務的な言い回しにしない
@@ -1394,12 +1525,13 @@ async function runCue(){
 ・「いえ」「はい」で相手の認識を否定・肯定するときは、その根拠が前提メモか会話にあるか確かめてから書く。根拠がなければ断定しない`),
 `【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
       full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full);
-        if(r.say[0]){ if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);renderLatLog();} showNote(r,false,!shown);shown=true;} },ac.signal);
+        if(r.expert&&curExp==="on"&&lastOther)runExpert(lastOther,false);   // ver1.34 カンペを書き終えるのを待たずに、専門の答えを作り始める
+        if(r.say[0]){ if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);renderLatLog();} presentCue(r,gen,false);shown=true;} },ac.signal);
     if(!ac.signal.aborted){
       if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);}
       rec.done=Date.now()-anchor;renderLatLog();
       const fin=parseCueLines(txt);
-      showNote(fin,false,!shown,true);lastCueAt=Date.now();
+      presentCue(fin,gen,true);lastCueAt=Date.now();
       if(fin.expert&&curExp==="on"&&lastOther)runExpert(lastOther,false);
       logd("latency",`初表示 ${(rec.first/1000).toFixed(2)}s`,`完了 ${(rec.done/1000).toFixed(2)}s`,rec.jev!=null?`Jev ${rec.jev}ms`:"Jevなし");
     }
