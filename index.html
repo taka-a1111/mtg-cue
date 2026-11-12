@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-12d -->
+<!-- BUILD_TAG: 2026-11-12e -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.39 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.40 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -378,7 +378,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.39 / BUILD_TAG 2026-11-12d</div>
+  <div class="foot">mtg_cue ver1.40 / BUILD_TAG 2026-11-12e</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -414,7 +414,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-12d");
+console.log("BUILD_TAG: 2026-11-12e");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -642,7 +642,7 @@ function watchSilence(stream){                               // ver1.31 マイ�
 function hasDisplayAudio(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia)&&!/Android|iPhone|iPad/i.test(navigator.userAgent)}
 function setMode(m){curMode=m;[...$("modeSeg").children].forEach(b=>b.classList.toggle("on",b.dataset.v===m));
   $("modeHint").textContent=m==="pc"
-   ?"開始時に「共有するタブ／画面」を選び、「音声を共有」にチェック。タブ音声＝相手、マイク＝自分として完全に分けます。Zoomはブラウザ版をタブで開くか、Windowsなら画面全体＋システム音声を選択。"
+   ?"開始すると「画面全体＋システムの音声」が選ばれた状態で共有の画面が出ます。「音声付きで共有」を押すだけです。共有した音＝相手、マイク＝自分として分けます。"
    :"PCの横にスマホを置いてマイクで拾います。開始後の最初の数秒は自分が話して、自分の声を登録してください（その声は除外します）。";}
 $("modeSeg").onclick=e=>{const b=e.target.closest("button");if(b)setMode(b.dataset.v)};
 let cfg=S.load();
@@ -805,7 +805,7 @@ async function start(){
   else{calibrating=false;calDone=true;}
   try{
     if(cfg.mode==="pc"){
-      const disp=await navigator.mediaDevices.getDisplayMedia({video:true,audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},systemAudio:"include"});
+      const disp=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:"monitor"},audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},systemAudio:"include",monitorTypeSurfaces:"include",selfBrowserSurface:"exclude",surfaceSwitching:"exclude"});   /* ver1.40 共有の画面は最初から「画面全体＋システムの音声」を選んだ状態で開く */
       if(!disp.getAudioTracks().length){disp.getTracks().forEach(t=>t.stop());toast("音声が共有されていません。「音声を共有」にチェックして選び直してください。");return}
       streams.push(disp);
       disp.getVideoTracks()[0].onended=()=>{if(running)stop()};
