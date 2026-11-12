@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-12a -->
+<!-- BUILD_TAG: 2026-11-12b -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.36 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.37 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -372,7 +372,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.36 / BUILD_TAG 2026-11-12a</div>
+  <div class="foot">mtg_cue ver1.37 / BUILD_TAG 2026-11-12b</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -408,7 +408,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-12a");
+console.log("BUILD_TAG: 2026-11-12b");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -516,6 +516,7 @@ function applyCase(c,how){
   $("memo").value=c.memo||"";$("keyterms").value=c.keyterms||"";
   $("caseSel").value=c.key;$("topCase").value=c.key;$("topCase").classList.toggle("auto",!!how&&how!=="手動");cfg=S.save();
   $("caseHint").textContent=`読み込み済み：${c.name||c.key}${how?"（"+how+"）":""}`;
+  if(running)warmCache();                                    // 会議中に案件を切り替えたら、新しい前提メモを読み込み直す
   return true;
 }
 $("btnCaseRefresh").onclick=()=>fetchCases(false);
@@ -793,6 +794,7 @@ async function start(){
     resume=(ans==="resume");
   }
   if(staleSession&&entries.length)toast("前回は別の日の記録のため、新しい会議として始めます");
+  warmCache();                                               // ver1.37 タブを選んでいる間に読み込みを済ませる
   if(!resume){archiveSession();staleSession=false;minutesText="";entries=[];selfSpk=null;calChars={};calibrating=false;calDone=true;summaryPts=[];lastCueAt=0;cueDirty=false;lastNote=null;tags=[];jevLog=[];latLog=[];moneyLog=[];keyPins=[];renderMoney();renderKeys();lastOtherFinalAt=0;jevFails=0;jevOffThisSession=false;startedAt=Date.now();clearSession();resetUI();}
   else{calibrating=false;calDone=true;}
   try{
@@ -814,7 +816,7 @@ async function start(){
   running=true;paused=false;if(!resume)t0=Date.now();
   watchSilence(streams[0]);                                  // ver1.31 音が入っていないことを知らせる
   $("btnGo").textContent="停止";$("btnGo").classList.add("stop");$("btnDeep").disabled=false;$("btnMin").style.display="none";$("btnPause").style.display="";$("btnPause").textContent="一時停止";$("btnPause").classList.remove("on");
-  clockTimer=setInterval(tick,1000);
+  clockTimer=setInterval(tick,1000);startWarmTimer();
   idleWarnAt=0;
   idleTimer=setInterval(()=>{                                // ver1.31 停止し忘れの防止
     if(!running||paused||!lastOtherFinalAt)return;
@@ -838,7 +840,7 @@ async function start(){
 function stop(){
   running=false;
   conns.forEach(c=>c.close());conns=[];cleanupMedia();
-  clearInterval(clockTimer);clearInterval(idleTimer);clearInterval(silenceTimer);clearInterval(sumTimer);clearInterval(driveTimer);clearTimeout(cueTimer);wakeLock?.release?.();
+  clearInterval(clockTimer);clearInterval(warmTimer);clearInterval(idleTimer);clearInterval(silenceTimer);clearInterval(sumTimer);clearInterval(driveTimer);clearTimeout(cueTimer);wakeLock?.release?.();
   paused=false;$("btnGo").textContent="開始";$("btnGo").classList.remove("stop");$("btnDeep").disabled=true;
   $("btnPause").style.display="none";$("btnMin").style.display="";$("btnMin").disabled=entries.length<3;
   setStatus("停止しました。書き起こしは画面に残ります（履歴にも保存されます）。","");saveSession();archiveSession();saveToDrive("会議終了");
@@ -1277,6 +1279,62 @@ function showNote(r,restoring,first,final){
   else $("alertCard").style.display="none";
 }
 
+function cueInstr(kind){return `あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。${kind?"\n今の相手の発言は「"+JEV_KINDS[kind]+"」と判定されています。"+JEV_HINT[kind]:""}
+相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。必ず「一言:」の行から書き始める。
+一言: 自分がそのまま口に出せる第一声（45文字以内。返答が不要のときは相槌か短い受け止め）
+専門: 要 または 不要（相手が技術・制度・法律・業界の仕組み・やり方・用語の意味・違い・原因・おすすめの方法など、専門知識での説明を求めている＝要。日程・金額・進捗・契約条件の質問や雑談＝不要）
+返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
+続き: 一言のあとに、そのまま続けて話す中身（40文字以内、会話体）。話す順に、この行を最大4回くり返す。続けて話すことがなければ「続き: なし」を1行だけ
+意図: 相手が本当に言いたいこと・求めていること（30文字以内）
+別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
+確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
+注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
+・一言で「3つあります」「2点あります」「いくつかあります」のように数や項目を予告したら、その中身を1つずつ「続き」の行に必ず書く。予告した数と「続き」の行数をそろえる。予告だけで終わらせない
+・中身を前提メモか会話から具体的に挙げられないときは、数や項目を予告する言い方をしない。「確認したい点があります」と始め、いちばん大事な1つを「続き」に書く
+・一言だけでは話が途中で止まるとき（説明・理由・手順・提案を求められたとき）も、続けて話す中身を「続き」に書き、一言と続きを順に読めば答えになるようにする
+・書き起こしは音声認識なので誤変換や欠落がある。文脈と前提メモから本来の発言を推定して答える（例：「いつごらっぱらとる」→「いつから上がる」）
+・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
+・第一声は会話体で自然に。防御的・事務的な言い回しにしない
+・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
+・金額・日付・件数・期限などの数字は、前提メモか会話の書き起こしに出てきたものをそのまま使う。足し算や掛け算をして新しい数字を作らない
+・前提メモにない数字を求められたら、数字を言わずに「確認のうえ、本日中にメールでご回答します」と返す案にする。概算やおおよその額も言わない
+・案件についての事実（相手の会社・依頼の中身・自分の状況や実績）は、会話に出ていないものを作らない
+・専門知識の質問には、一般に確立した知識で結論を先に答えてよい。ただし自分の経験や実績として語らない（実績は前提メモにあるものだけ）。前提メモに想定問答があればそれを優先する
+・前提メモに「未着」「未定」「未決」「保留」「未確定」と書かれている項目を、「届いている」「済み」「完了」「進めている」「決まった」と言い換えない。前提メモの記載を最優先し、会話でそれが覆っていなければ、書かれているとおりに答える
+・自分側の状況（依頼を受け取ったか、着手したか、納品したか、決まったか）は、前提メモか会話に出てきたことだけを言う。出ていなければ断定せず、確認して折り返す言い方にする
+・「いえ」「はい」で相手の認識を否定・肯定するときは、その根拠が前提メモか会話にあるか確かめてから書く。根拠がなければ断定しない`}
+const EXPERT_INSTR=`あなたは会議中の「自分」の隣にいる専門家です。相手の直近の質問が専門知識（技術・制度・法律・業界の仕組み・やり方・用語・原因・比較）を問うものなら、自分がその場で落ち着いて答えられるように、答えの骨組みを渡します。次の行だけを、この順番と行頭のラベルで返してください。前置き・装飾・JSONは禁止。
+専門: 要 または 不要（専門知識の質問でなければ「専門: 不要」の1行だけを返して終える）
+確度: 高 または 中 または 低
+話題: 何を聞かれているか（25文字以内）
+結論: そのまま口に出せる結論（70文字以内、会話体）
+理由: 理由・仕組み・手順（50文字以内。この行を2〜3回くり返す）
+例: 相手に伝わる具体例（60文字以内、なければ「なし」）
+注意: 条件次第で変わる点・言い切らない方がよい点（60文字以内、なければ「なし」）
+逆質問: 相手の状況を確かめる逆質問（40文字以内）
+・書き起こしは音声認識なので誤変換がある。文脈と用語リストから本来の質問を推定する
+・一般に確立した知識だけで答える。専門家同士でも意見が割れること、法令・料金・仕様・アルゴリズムなど最近変わり得ることは、「注意」の行に「最新の情報を確認して回答」と書き、「結論」では断定を避ける
+・自信がなければ確度を「低」にし、結論は「持ち帰って正確にお伝えします」と、分かっている範囲を一言添える形にする。知ったかぶりの答えを作らない
+・自分の経験・実績・担当事例として語らない。実績に触れるのは前提メモに書かれているものだけ
+・案件の金額・見積・納期・件数は作らない。公的な基準値など一般に公開された数字を使うときは、どこの基準かを添える
+・前提メモに想定問答や方針があれば、それを最優先し、矛盾しない答えにする
+・専門用語は相手に通じる言葉に言い換える`;
+/* ---- ver1.37 予熱：会議の開始時と案件の切り替え時に、前提メモと指示文を先に読み込ませておく ---- */
+// Claude のキャッシュは5分で消えるので、会議中は4分おきに、しばらく呼んでいないほうだけ読み込み直す。
+let lastCueCallAt=0, lastExpertCallAt=0, warmTimer=null;
+async function warmOne(kind){
+  if(!cfg.aKey||!cfg.memo)return;
+  const isEx=kind==="expert";
+  if(isEx)lastExpertCallAt=Date.now();else lastCueCallAt=Date.now();
+  try{await claude(isEx?cfg.mSmart:cfg.mFast,sysWithMemo(isEx?EXPERT_INSTR:cueInstr(null)),"（準備のための呼び出しです。「了」とだけ返してください）",1);logd("予熱",isEx?"専門":"カンペ")}
+  catch(e){logd("予熱失敗",isEx?"専門":"カンペ",String(e.message||e).slice(0,80))}
+}
+function warmCache(){warmOne("cue");if(curExp==="on")warmOne("expert")}
+function startWarmTimer(){clearInterval(warmTimer);warmTimer=setInterval(()=>{
+  if(!running||paused)return;
+  if(Date.now()-lastCueCallAt>240000)warmOne("cue");
+  if(curExp==="on"&&Date.now()-lastExpertCallAt>240000)warmOne("expert");
+},60000)}
 /* ================= Claude ================= */
 // 前提メモは毎回同じなので、systemの先頭に固定ブロックとして置きキャッシュ対象にする。
 // 可変の指示文は必ずその後ろに置く（キャッシュは先頭からの一致で効くため）。
@@ -1284,7 +1342,7 @@ function sysWithMemo(instr){
   const kt=(cfg.keyterms||"").trim();
   const memo="【前提メモ】\n"+(cfg.memo||"（なし）")
     +(kt?"\n\n【この会議に出てくる固有名詞・用語。書き起こしの誤変換はこの語に直す】\n"+kt:"");
-  return [{type:"text",text:memo,cache_control:{type:"ephemeral"}},{type:"text",text:instr}];
+  return [{type:"text",text:memo,cache_control:{type:"ephemeral"}},{type:"text",text:instr,cache_control:{type:"ephemeral"}}];   // ver1.37 指示文も固定なのでキャッシュする
 }
 function logUsage(tag,u){ if(!u)return;
   const hit=u.cache_read_input_tokens||0,wrote=u.cache_creation_input_tokens||0;
@@ -1467,23 +1525,8 @@ async function runExpert(target,manual){
     $("exLim").style.display="none";$("exAsk").style.display="none";}
   const done=()=>{ if(ac!==expertAbort)return; exWaiting=false;refreshExNext(); if(!shown&&!exCur)$("expertCard").style.display="none"; };
   try{
-    const txt=await claudeStream(cfg.mSmart,sysWithMemo(
-`あなたは会議中の「自分」の隣にいる専門家です。相手の直近の質問が専門知識（技術・制度・法律・業界の仕組み・やり方・用語・原因・比較）を問うものなら、自分がその場で落ち着いて答えられるように、答えの骨組みを渡します。次の行だけを、この順番と行頭のラベルで返してください。前置き・装飾・JSONは禁止。
-専門: 要 または 不要（専門知識の質問でなければ「専門: 不要」の1行だけを返して終える）
-確度: 高 または 中 または 低
-話題: 何を聞かれているか（25文字以内）
-結論: そのまま口に出せる結論（70文字以内、会話体）
-理由: 理由・仕組み・手順（50文字以内。この行を2〜3回くり返す）
-例: 相手に伝わる具体例（60文字以内、なければ「なし」）
-注意: 条件次第で変わる点・言い切らない方がよい点（60文字以内、なければ「なし」）
-逆質問: 相手の状況を確かめる逆質問（40文字以内）
-・書き起こしは音声認識なので誤変換がある。文脈と用語リストから本来の質問を推定する
-・一般に確立した知識だけで答える。専門家同士でも意見が割れること、法令・料金・仕様・アルゴリズムなど最近変わり得ることは、「注意」の行に「最新の情報を確認して回答」と書き、「結論」では断定を避ける
-・自信がなければ確度を「低」にし、結論は「持ち帰って正確にお伝えします」と、分かっている範囲を一言添える形にする。知ったかぶりの答えを作らない
-・自分の経験・実績・担当事例として語らない。実績に触れるのは前提メモに書かれているものだけ
-・案件の金額・見積・納期・件数は作らない。公的な基準値など一般に公開された数字を使うときは、どこの基準かを添える
-・前提メモに想定問答や方針があれば、それを最優先し、矛盾しない答えにする
-・専門用語は相手に通じる言葉に言い換える`),
+    lastExpertCallAt=Date.now();
+    const txt=await claudeStream(cfg.mSmart,sysWithMemo(EXPERT_INSTR),
 `【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(16)}\n\n【答えたい相手の発言】\n${target.text}`,900,
       full=>{ if(ac.signal.aborted)return; const r=parseExpertLines(full);
         if(r.expert!==false&&r.answer){shown=true;presentExpert(r,gen)} },ac.signal);
@@ -1533,31 +1576,8 @@ async function runCue(){
   if(!rec.text&&lastOther)rec.text=lastOther.text.slice(0,40);
   rec.model=useSmart?cfg.mSmart:cfg.mFast;
   try{
-    const txt=await claudeStream(useSmart?cfg.mSmart:cfg.mFast,sysWithMemo(
-`あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。${kind?"\n今の相手の発言は「"+JEV_KINDS[kind]+"」と判定されています。"+JEV_HINT[kind]:""}
-相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。
-返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
-専門: 要 または 不要（相手が技術・制度・法律・業界の仕組み・やり方・用語の意味・違い・原因・おすすめの方法など、専門知識での説明を求めている＝要。日程・金額・進捗・契約条件の質問や雑談＝不要）
-一言: 自分がそのまま口に出せる第一声（45文字以内。不要のときは相槌か短い受け止め）
-続き: 一言のあとに、そのまま続けて話す中身（40文字以内、会話体）。話す順に、この行を最大4回くり返す。続けて話すことがなければ「続き: なし」を1行だけ
-意図: 相手が本当に言いたいこと・求めていること（30文字以内）
-別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
-確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
-注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
-・一言で「3つあります」「2点あります」「いくつかあります」のように数や項目を予告したら、その中身を1つずつ「続き」の行に必ず書く。予告した数と「続き」の行数をそろえる。予告だけで終わらせない
-・中身を前提メモか会話から具体的に挙げられないときは、数や項目を予告する言い方をしない。「確認したい点があります」と始め、いちばん大事な1つを「続き」に書く
-・一言だけでは話が途中で止まるとき（説明・理由・手順・提案を求められたとき）も、続けて話す中身を「続き」に書き、一言と続きを順に読めば答えになるようにする
-・書き起こしは音声認識なので誤変換や欠落がある。文脈と前提メモから本来の発言を推定して答える（例：「いつごらっぱらとる」→「いつから上がる」）
-・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
-・第一声は会話体で自然に。防御的・事務的な言い回しにしない
-・前提メモの希望条件と話し方に従う。数字や条件は前提メモの内容から外れない
-・金額・日付・件数・期限などの数字は、前提メモか会話の書き起こしに出てきたものをそのまま使う。足し算や掛け算をして新しい数字を作らない
-・前提メモにない数字を求められたら、数字を言わずに「確認のうえ、本日中にメールでご回答します」と返す案にする。概算やおおよその額も言わない
-・案件についての事実（相手の会社・依頼の中身・自分の状況や実績）は、会話に出ていないものを作らない
-・専門知識の質問には、一般に確立した知識で結論を先に答えてよい。ただし自分の経験や実績として語らない（実績は前提メモにあるものだけ）。前提メモに想定問答があればそれを優先する
-・前提メモに「未着」「未定」「未決」「保留」「未確定」と書かれている項目を、「届いている」「済み」「完了」「進めている」「決まった」と言い換えない。前提メモの記載を最優先し、会話でそれが覆っていなければ、書かれているとおりに答える
-・自分側の状況（依頼を受け取ったか、着手したか、納品したか、決まったか）は、前提メモか会話に出てきたことだけを言う。出ていなければ断定せず、確認して折り返す言い方にする
-・「いえ」「はい」で相手の認識を否定・肯定するときは、その根拠が前提メモか会話にあるか確かめてから書く。根拠がなければ断定しない`),
+    lastCueCallAt=Date.now();
+    const txt=await claudeStream(useSmart?cfg.mSmart:cfg.mFast,sysWithMemo(cueInstr(kind)),
 `【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,480,
       full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full);
         if(r.expert&&curExp==="on"&&lastOther)runExpert(lastOther,false);   // ver1.34 カンペを書き終えるのを待たずに、専門の答えを作り始める
