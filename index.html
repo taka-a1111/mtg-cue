@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-12e -->
+<!-- BUILD_TAG: 2026-11-12f -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.40 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.41 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -378,7 +378,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.40 / BUILD_TAG 2026-11-12e</div>
+  <div class="foot">mtg_cue ver1.41 / BUILD_TAG 2026-11-12f</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -414,7 +414,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-12e");
+console.log("BUILD_TAG: 2026-11-12f");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -1305,8 +1305,9 @@ function cueInstr(kind){return `あなたはオンライン商談中の「自分
 別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
 確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
 注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
-・一言で「3つあります」「2点あります」「いくつかあります」のように数や項目を予告したら、その中身を1つずつ「続き」の行に必ず書く。予告した数と「続き」の行数をそろえる。予告だけで終わらせない
-・中身を前提メモか会話から具体的に挙げられないときは、数や項目を予告する言い方をしない。「確認したい点があります」と始め、いちばん大事な1つを「続き」に書く
+・一言で「◯点確認したいことがあります」「3つあります」「確認したい点があります」のような、数や項目を予告するだけの前置きをしない。機械的に聞こえるため。一言からいきなり中身に入る（例：「ちなみに、納期は月末で大丈夫でしょうか？」「そうなると、写真はご用意いただけますか？」）
+・伝えたい・聞きたいことが複数あるときは、いちばん大事なものを一言で言い、残りは「続き」に「あと、〜」「それと、〜」のように会話の流れでつなげて書く
+・一言の出だしを毎回同じ形にしない。直前の自分の発言と同じ言い出し（「確認ですが」「承知しました」など）が続かないようにし、相手の言葉を受けた自然な言い方にする
 ・一言だけでは話が途中で止まるとき（説明・理由・手順・提案を求められたとき）も、続けて話す中身を「続き」に書き、一言と続きを順に読めば答えになるようにする
 ・書き起こしは音声認識なので誤変換や欠落がある。文脈と前提メモから本来の発言を推定して答える（例：「いつごらっぱらとる」→「いつから上がる」）
 ・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
