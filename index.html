@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-12b -->
+<!-- BUILD_TAG: 2026-11-12c -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.37 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.38 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -102,8 +102,6 @@ input,select,textarea{font-family:inherit}
 .note{background:var(--note);color:var(--note-ink);border-radius:6px 6px 14px 6px;padding:24px 16px 12px;
   box-shadow:0 8px 24px rgba(0,0,0,.35);position:sticky;top:0;z-index:3;min-height:120px;overflow-wrap:anywhere}
 .note::before{content:"";position:absolute;left:14px;right:14px;top:-6px;height:12px;background:rgba(0,0,0,.08);border-radius:2px}
-.note .intent{font-size:calc(14px*var(--k));color:var(--note-dim);margin-top:8px;line-height:1.45}
-.note .intent::before{content:"相手の意図："}
 .note .say{font-size:calc(25px*var(--k));font-weight:700;line-height:1.45;margin-bottom:10px}
 @media (min-width:900px){.note .say{font-size:calc(28px*var(--k))}}
 .note .say2{font-size:calc(17px*var(--k));font-weight:500;line-height:1.5;color:#3a3114;margin-bottom:8px;padding-left:12px;border-left:3px solid #c9b445}
@@ -230,7 +228,6 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <ol class="more" id="nMore"></ol>
       <div class="say2" id="nSay2" style="display:none"></div>
       <div class="ask" id="nAsk" style="display:none"></div>
-      <div class="intent" id="nIntent" style="display:none"></div>
       <div class="numwarn" id="nNum" style="display:none"></div>
       <div class="next" id="noteNext"><span class="lab">次のカンペ（タップで切り替え）</span><span class="txt" id="noteNextTxt"></span></div>
       <div class="pin" id="notePin">固定中（もう一度タップで解除）</div>
@@ -372,7 +369,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.37 / BUILD_TAG 2026-11-12b</div>
+  <div class="foot">mtg_cue ver1.38 / BUILD_TAG 2026-11-12c</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -408,7 +405,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-12b");
+console.log("BUILD_TAG: 2026-11-12c");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -860,7 +857,7 @@ function resetUI(){
   $("summary").innerHTML='<li class="empty">会話が進むと自動で更新されます</li>';
   $("alertCard").style.display="none";$("deepCard").style.display="none";$("expertCard").style.display="none";lastExpertT=null;
   curCue=null;pendCue=null;exCur=null;exPend=null;exWaiting=false;renderNext();refreshExNext();
-  $("nNum").style.display="none";$("note").classList.remove("soft");$("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nIntent","nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
+  $("nNum").style.display="none";$("note").classList.remove("soft");$("calbox").classList.remove("on");$("btnCal").textContent="登録開始";$("btnCal").classList.remove("rec");$("noteWait").style.display="";["nSay","nSay2","nAsk"].forEach(i=>$(i).style.display="none");$("noteStamp").textContent="";
   const h=cfg.mode==="pc"?"薄い行は自分の発言。":"薄い行は自分の発言（AIには「自分」として渡します）。行を長押し（PCは右クリック）で「これは自分の声」に切り替えられます。";
   $("hintM").textContent=h;$("hintP").textContent=h;
 }
@@ -1252,7 +1249,7 @@ let noteStamp="";
 function showNote(r,restoring,first,final){
   lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
   const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
-  set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
+  set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
   {const mo=r.more||[],el=$("nMore");el.innerHTML=mo.map(x=>`<li>${esc(x)}</li>`).join("");el.classList.toggle("one",mo.length===1);el.style.display=mo.length?"block":"none"}
   if(restoring)noteStamp=r.stamp||"";else if(first||!noteStamp)noteStamp=$("clock").textContent;
   r.stamp=noteStamp;const _l=latLog[latLog.length-1];
@@ -1285,7 +1282,6 @@ function cueInstr(kind){return `あなたはオンライン商談中の「自分
 専門: 要 または 不要（相手が技術・制度・法律・業界の仕組み・やり方・用語の意味・違い・原因・おすすめの方法など、専門知識での説明を求めている＝要。日程・金額・進捗・契約条件の質問や雑談＝不要）
 返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
 続き: 一言のあとに、そのまま続けて話す中身（40文字以内、会話体）。話す順に、この行を最大4回くり返す。続けて話すことがなければ「続き: なし」を1行だけ
-意図: 相手が本当に言いたいこと・求めていること（30文字以内）
 別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
 確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
 注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
