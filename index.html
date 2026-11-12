@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-12c -->
+<!-- BUILD_TAG: 2026-11-12d -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.38 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.39 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -73,10 +73,12 @@ input,select,textarea{font-family:inherit}
 .col>*{flex:none}
 .col.left{padding-bottom:110px}
 .col.right{display:none}
+#sideInfo{display:flex;flex-direction:column;gap:12px}
 @media (min-width:900px){
   .wrap{flex-direction:row}
-  .col{flex:1;padding-bottom:110px}
-  .col.left{flex:1.15}
+  .wrap{padding-bottom:calc(84px + env(safe-area-inset-bottom))}   /* ver1.39 下のボタンに隠れないよう、列はボタンの上で終える */
+  .col{flex:1;padding-bottom:12px}
+  .col.left{flex:1.5;padding-bottom:12px}
   .col.right{display:flex;border-left:1px solid var(--line)}
   .mobile-only{display:none}
 }
@@ -143,8 +145,14 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 .card.alert ul.pts li::before{background:var(--warn)}
 
 .log{display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:42vh;overscroll-behavior:contain}
-.col.right .card{display:flex;flex-direction:column;min-height:0;flex:1}
-.col.right .log{flex:1;max-height:none;min-height:0}
+.col.right .logcard{display:flex;flex-direction:column;min-height:120px;flex:1 1 0;margin-top:auto;padding:8px 12px}   /* ver1.39 書き起こしは右下に小さく */
+.col.right .logcard h2{font-size:12px;margin-bottom:4px}
+.col.right .log{flex:1;max-height:none;min-height:0;gap:2px}
+.col.right .log .line{font-size:12.5px;line-height:1.45;padding:3px 8px;border-radius:6px}
+.col.right .log .line.me{font-size:12px}
+.col.right .log .line .who{font-size:10.5px}
+.col.right .logcard .hint{font-size:11px;margin-top:4px}
+.col.right #sideInfo .latest{font-size:calc(18px*var(--k))}
 .log .line{font-size:15px;line-height:1.55;padding:7px 10px;border-radius:10px;background:var(--panel2)}
 .log .line.me{background:transparent;color:var(--self);font-size:14px}
 .log .line .who{font-size:12px;color:var(--muted);margin-right:6px}
@@ -253,7 +261,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <ul class="pts" id="deep"></ul>
     </div>
 
-    <div class="card">
+    <div class="card" id="latestCard">
       <h2>相手の最新の発言</h2>
       <div class="latest" id="latest"><span class="empty">まだ発言はありません</span></div>
     </div>
@@ -268,7 +276,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <ul class="pts" id="moneyPts"></ul>
     </div>
 
-    <div class="card">
+    <div class="card" id="sumCard">
       <h2>ここまでの要点</h2>
       <ul class="pts" id="summary"><li class="empty">会話が進むと自動で更新されます</li></ul>
     </div>
@@ -281,7 +289,8 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
 
   <div class="col right">
-    <div class="card" style="flex:1">
+    <div id="sideInfo"></div>
+    <div class="card logcard">
       <h2>書き起こし</h2>
       <div class="log" id="logP"></div>
       <div class="hint" id="hintP"></div>
@@ -369,7 +378,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.38 / BUILD_TAG 2026-11-12c</div>
+  <div class="foot">mtg_cue ver1.39 / BUILD_TAG 2026-11-12d</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -405,7 +414,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-12c");
+console.log("BUILD_TAG: 2026-11-12d");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -1084,6 +1093,17 @@ function reassignSelf(spk){selfSpk=spk;calDone=true;calibrating=false;$("calbox"
 
 /* ================= 表示 ================= */
 function logEls(){return[$("logM"),$("logP")]}
+/* ver1.39 PCでは、重要な情報を右側に並べ、書き起こしは右下に小さく出す（スマホは今までどおり縦に並べる） */
+const SIDE_CARDS=["latestCard","keyCard","moneyCard","sumCard"];
+const pcMQ=window.matchMedia("(min-width:900px)");
+function placeCards(){
+  const pc=pcMQ.matches,side=$("sideInfo"),mob=$("logM").closest(".card");
+  for(const id of SIDE_CARDS){const el=$(id);if(!el)continue;
+    if(pc){if(el.parentNode!==side)side.appendChild(el)}
+    else if(el.parentNode!==mob.parentNode)mob.parentNode.insertBefore(el,mob)}
+}
+pcMQ.addEventListener?pcMQ.addEventListener("change",placeCards):pcMQ.addListener(placeCards);
+placeCards();
 function showInterim(txt){logEls().forEach(l=>{let el=l.querySelector(".interim");if(!el){el=document.createElement("div");el.className="line interim";l.appendChild(el)}el.textContent=txt});scrollLogs()}
 function removeInterim(){logEls().forEach(l=>l.querySelector(".interim")?.remove())}
 function renderLog(){
