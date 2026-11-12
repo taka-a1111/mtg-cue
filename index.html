@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-10b -->
+<!-- BUILD_TAG: 2026-11-12a -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.35 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.36 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -108,6 +108,11 @@ input,select,textarea{font-family:inherit}
 @media (min-width:900px){.note .say{font-size:calc(28px*var(--k))}}
 .note .say2{font-size:calc(17px*var(--k));font-weight:500;line-height:1.5;color:#3a3114;margin-bottom:8px;padding-left:12px;border-left:3px solid #c9b445}
 .note .say2::before{content:"別案：";color:var(--note-dim);font-size:.82em}
+.note .more{display:none;list-style:none;margin:0 0 10px;padding:0;counter-reset:mo}
+.note .more li{counter-increment:mo;position:relative;padding-left:1.7em;font-size:calc(20px*var(--k));font-weight:600;line-height:1.5;margin-bottom:6px}
+.note .more li::before{content:counter(mo);position:absolute;left:0;top:.18em;width:1.25em;height:1.25em;border-radius:50%;background:#2a2410;color:var(--note);font-size:.72em;font-weight:700;display:flex;align-items:center;justify-content:center}
+.note .more.one li{padding-left:0}.note .more.one li::before{display:none}
+.note.soft .more li{font-size:calc(17px*var(--k));font-weight:500}
 .note .ask{font-size:calc(15px*var(--k));color:#27466a;line-height:1.45}
 .note .ask::before{content:"確認：";color:var(--note-dim)}
 .note .numwarn{margin-top:10px;padding:8px 10px;background:#c0392b;color:#fff;border-radius:8px;
@@ -222,6 +227,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
       <div class="waiting" id="noteWait">相手が話し始めると、ここにカンペが出ます。</div>
       <div class="calbox" id="calbox"><p id="calMsg">登録しなくてもカンペは出ます。自分の発言を相手と分けたいときだけ、「登録開始」を押して5〜10秒話し、「登録完了」を押してください。</p><button class="reg" id="btnCal">登録開始</button><button class="skip" id="btnCalSkip">登録しない（全部相手）</button></div>
       <div class="say" id="nSay" style="display:none"></div>
+      <ol class="more" id="nMore"></ol>
       <div class="say2" id="nSay2" style="display:none"></div>
       <div class="ask" id="nAsk" style="display:none"></div>
       <div class="intent" id="nIntent" style="display:none"></div>
@@ -366,7 +372,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.35 / BUILD_TAG 2026-11-10b</div>
+  <div class="foot">mtg_cue ver1.36 / BUILD_TAG 2026-11-12a</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -402,7 +408,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-10b");
+console.log("BUILD_TAG: 2026-11-12a");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -937,7 +943,7 @@ function isReadAloud(text){                                  // 自分の声を�
   if(hasSelfChannel()||!curCue||!lastNote||Date.now()-curCue.shownAt>30000)return false;
   const cl=x=>String(x).replace(/[\s、。,.!?！？「」]/g,"");
   const a=cl(text);if(a.length<8)return false;
-  const src=cl([lastNote.say?.[0],lastNote.say?.[1],lastNote.ask,$("exAns").textContent].filter(Boolean).join(""));
+  const src=cl([lastNote.say?.[0],...(lastNote.more||[]),lastNote.say?.[1],lastNote.ask,$("exAns").textContent].filter(Boolean).join(""));
   if(src.length<8)return false;
   const A=bigrams(a),B=bigrams(src);let c=0;for(const x of A)if(B.has(x))c++;
   return c/A.size>=0.6;
@@ -1206,8 +1212,8 @@ function renderKeys(){
 /* ================= 表示の保持（ver1.34） ================= */
 // 読んでいる途中のカンペを次のカンペで上書きしない。新しいカンペは「次のカンペ」欄にすぐ出し、読み終えるころに入れ替える。
 let cueGen=0, curCue=null, pendCue=null, lastSelfAt=0;
-const HOLD_GRACE=1500, HOLD_SELF=2500, HOLD_MAX=25000;
-function cueHoldMs(r){const n=((r.say&&r.say[0])||"").length;return Math.max(6000,Math.min(12000,2500+n*170))}
+const HOLD_GRACE=1500, HOLD_SELF=2500, HOLD_MAX=35000;
+function cueHoldMs(r){const n=((r.say&&r.say[0])||"").length+(r.more||[]).join("").length;return Math.max(6000,Math.min(25000,2500+n*170))}
 function selfTalking(){return Date.now()-lastSelfAt<HOLD_SELF}
 function cueHeld(){
   if(!curCue||!curCue.need)return false;
@@ -1245,11 +1251,12 @@ function showNote(r,restoring,first,final){
   lastNote=r;$("noteWait").style.display="none";$("note").classList.toggle("soft",r.needs_reply===false);
   const set=(id,v)=>{const el=$(id);if(v){el.textContent=v;el.style.display=""}else el.style.display="none"};
   set("nIntent",r.intent);set("nSay",r.say?.[0]);set("nSay2",r.say?.[1]);set("nAsk",r.ask);
+  {const mo=r.more||[],el=$("nMore");el.innerHTML=mo.map(x=>`<li>${esc(x)}</li>`).join("");el.classList.toggle("one",mo.length===1);el.style.display=mo.length?"block":"none"}
   if(restoring)noteStamp=r.stamp||"";else if(first||!noteStamp)noteStamp=$("clock").textContent;
   r.stamp=noteStamp;const _l=latLog[latLog.length-1];
   $("noteStamp").textContent=noteStamp+((_l&&_l.first!=null)?`　${(_l.first/1000).toFixed(1)}秒`:"");
   if(final||restoring){
-    const cueText=[r.say?.[0],r.say?.[1],r.ask].filter(Boolean).join(" ");
+    const cueText=[r.say?.[0],...(r.more||[]),r.say?.[1],r.ask].filter(Boolean).join(" ");
     const bad=unverifiedNumbers(cueText);
     const conf=conflictingClaims(cueText);
     const msgs=[];
@@ -1304,11 +1311,12 @@ async function claudeStream(model,system,user,maxTokens,onText,signal){
   return full;
 }
 function parseCueLines(txt){
-  const r={needs_reply:true,say:[]};
-  for(const raw of txt.split("\n")){const line=raw.trim();const m=line.match(/^(返答|一言|意図|別案|確認|注意|専門)[:：]\s*(.*)$/);if(!m)continue;
+  const r={needs_reply:true,say:[],more:[]};
+  for(const raw of txt.split("\n")){const line=raw.trim();const m=line.match(/^(返答|一言|続き|意図|別案|確認|注意|専門)[:：]\s*(.*)$/);if(!m)continue;
     const v=m[2].replace(/^(なし|不要|null)$/,"");
     if(m[1]==="返答")r.needs_reply=!/不要/.test(m[2]);
     else if(m[1]==="一言")r.say[0]=v;else if(m[1]==="別案")r.say[1]=v;
+    else if(m[1]==="続き"){const w=v.replace(/^[0-9０-９①-⑨][\.．、)）]?\s*/,"");if(w&&r.more.length<4)r.more.push(w)}   // ver1.36 一言のあとに続けて話す中身
     else if(m[1]==="専門")r.expert=/^要/.test(m[2]);
     else if(m[1]==="意図")r.intent=v;else if(m[1]==="確認")r.ask=v;else if(m[1]==="注意")r.flag=v;}
   return r;
@@ -1527,14 +1535,18 @@ async function runCue(){
   try{
     const txt=await claudeStream(useSmart?cfg.mSmart:cfg.mFast,sysWithMemo(
 `あなたはオンライン商談中の「自分」の耳元でささやくカンペ係です。会話の流れ（自分と相手の発言）が渡されます。${kind?"\n今の相手の発言は「"+JEV_KINDS[kind]+"」と判定されています。"+JEV_HINT[kind]:""}
-相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の7行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。
+相手の直近の発言に対して、今この瞬間に自分が言うべきことを、次の行だけで返してください。順番と行頭のラベルを厳守し、前置きや装飾は禁止。
 返答: 要 または 不要（相手が自分に質問・依頼・相談・判断を求めている＝要。説明や独白の途中、雑談＝不要）
 専門: 要 または 不要（相手が技術・制度・法律・業界の仕組み・やり方・用語の意味・違い・原因・おすすめの方法など、専門知識での説明を求めている＝要。日程・金額・進捗・契約条件の質問や雑談＝不要）
 一言: 自分がそのまま口に出せる第一声（45文字以内。不要のときは相槌か短い受け止め）
+続き: 一言のあとに、そのまま続けて話す中身（40文字以内、会話体）。話す順に、この行を最大4回くり返す。続けて話すことがなければ「続き: なし」を1行だけ
 意図: 相手が本当に言いたいこと・求めていること（30文字以内）
 別案: 別の切り返しか補足の一言（45文字以内。不要のときは「なし」）
 確認: 相手に確認すべき一言（40文字以内。なければ「なし」）
 注意: 前提メモの警戒事項に触れている・即決してはいけない場合の注意1行（なければ「なし」）
+・一言で「3つあります」「2点あります」「いくつかあります」のように数や項目を予告したら、その中身を1つずつ「続き」の行に必ず書く。予告した数と「続き」の行数をそろえる。予告だけで終わらせない
+・中身を前提メモか会話から具体的に挙げられないときは、数や項目を予告する言い方をしない。「確認したい点があります」と始め、いちばん大事な1つを「続き」に書く
+・一言だけでは話が途中で止まるとき（説明・理由・手順・提案を求められたとき）も、続けて話す中身を「続き」に書き、一言と続きを順に読めば答えになるようにする
 ・書き起こしは音声認識なので誤変換や欠落がある。文脈と前提メモから本来の発言を推定して答える（例：「いつごらっぱらとる」→「いつから上がる」）
 ・自分の作業に関する納期・可否・進捗など、自分が知っていることは即答してよい。確認や持ち帰りは、前提メモの警戒事項に本当に触れたときだけ
 ・第一声は会話体で自然に。防御的・事務的な言い回しにしない
@@ -1546,7 +1558,7 @@ async function runCue(){
 ・前提メモに「未着」「未定」「未決」「保留」「未確定」と書かれている項目を、「届いている」「済み」「完了」「進めている」「決まった」と言い換えない。前提メモの記載を最優先し、会話でそれが覆っていなければ、書かれているとおりに答える
 ・自分側の状況（依頼を受け取ったか、着手したか、納品したか、決まったか）は、前提メモか会話に出てきたことだけを言う。出ていなければ断定せず、確認して折り返す言い方にする
 ・「いえ」「はい」で相手の認識を否定・肯定するときは、その根拠が前提メモか会話にあるか確かめてから書く。根拠がなければ断定しない`),
-`【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,300,
+`【これまでの要点】\n${summaryPts.join("\n")||"（なし）"}\n\n【直近の会話】\n${transcriptText(24)}`,480,
       full=>{ if(ac.signal.aborted)return; const r=parseCueLines(full);
         if(r.expert&&curExp==="on"&&lastOther)runExpert(lastOther,false);   // ver1.34 カンペを書き終えるのを待たずに、専門の答えを作り始める
         if(r.say[0]){ if(rec.first==null){rec.first=Date.now()-anchor;latLog.push(rec);renderLatLog();} presentCue(r,gen,false);shown=true;} },ac.signal);
