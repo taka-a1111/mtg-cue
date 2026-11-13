@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- BUILD_TAG: 2026-11-12f -->
+<!-- BUILD_TAG: 2026-11-13a -->
 <!-- SITE-ID: mtg-cue -->
-<!-- mtg_cue ver1.41 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
+<!-- mtg_cue ver1.42 / 会議カンペ（スマホ＝マイク / PC＝タブ音声＋マイク）Deepgram + Claude -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -378,7 +378,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
   </div>
   <div class="f"><label>接続ログ（不具合報告用）</label><pre id="dbgBox" style="background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)"></pre></div>
   <div class="btns"><button id="btnClose">閉じる</button><button class="save" id="btnSave">保存する</button></div>
-  <div class="foot">mtg_cue ver1.41 / BUILD_TAG 2026-11-12f</div>
+  <div class="foot">mtg_cue ver1.42 / BUILD_TAG 2026-11-13a</div>
 </div></div>
 
 <!-- 履歴 -->
@@ -414,7 +414,7 @@ ul.pts li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height
 <div class="toast" id="toast"></div>
 
 <script>
-console.log("BUILD_TAG: 2026-11-12f");
+console.log("BUILD_TAG: 2026-11-13a");
 /* ================= 設定 ================= */
 const DEFAULT_MEMO =
 `相手：（会社名・担当者名・立場）
@@ -466,6 +466,7 @@ $("expSeg").onclick=e=>{const b=e.target.closest("button");if(b)setExp(b.dataset
 
 /* ---- 案件マスタ（GAS経由でドライブのスプレッドシートを読み書き） ---- */
 let caseList=[];
+let loadedMemo="", memoCheckAt=0, memoFailToastAt=0, starting=false, casesInflight=null;   // ver1.42 前提メモの読み直し
 function renderCases(list){
   caseList=Array.isArray(list)?list:[];
   const opts=caseList.map(c=>`<option value="${esc(c.key)}">${esc(c.name||c.key)}</option>`).join("");
@@ -487,7 +488,8 @@ async function gasGet(action,extra){
   u.searchParams.set("action",action);
   if(cfg.gasToken)u.searchParams.set("token",cfg.gasToken);
   for(const k in (extra||{}))u.searchParams.set(k,extra[k]);
-  const r=await fetch(u.toString(),{method:"GET",redirect:"follow"});
+  u.searchParams.set("_",String(Date.now()));                 // ver1.42 古い一覧が返らないように
+  const r=await fetch(u.toString(),{method:"GET",redirect:"follow",cache:"no-store"});
   if(!r.ok)throw new Error("GAS "+r.status);
   const d=await r.json();
   if(!d.ok)throw new Error(d.error||"GASエラー");
@@ -501,7 +503,12 @@ async function fetchCasesFile(){                           // ver1.31 任意。c
   return d;
 }
 let casesToday=null;                                        // ver1.31 cases.json に書かれた「今日の会議」
-async function fetchCases(quiet){
+function fetchCases(quiet){                                  // ver1.42 同時に呼ばれても通信は1回にまとめる
+  if(quiet&&casesInflight)return casesInflight;
+  const p=fetchCasesRaw(quiet).finally(()=>{if(casesInflight===p)casesInflight=null});
+  casesInflight=p;return p;
+}
+async function fetchCasesRaw(quiet){
   let d=null,src="";
   try{ d=await fetchCasesFile();src="cases.json"; }
   catch(e1){
@@ -519,13 +526,51 @@ async function fetchCases(quiet){
 function todayStr(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 function applyCase(c,how){
   if(!c)return false;
-  $("memo").value=c.memo||"";$("keyterms").value=c.keyterms||"";
+  $("memo").value=c.memo||"";$("keyterms").value=c.keyterms||"";loadedMemo=$("memo").value;
   $("caseSel").value=c.key;$("topCase").value=c.key;$("topCase").classList.toggle("auto",!!how&&how!=="手動");cfg=S.save();
   $("caseHint").textContent=`読み込み済み：${c.name||c.key}${how?"（"+how+"）":""}`;
   if(running)warmCache();                                    // 会議中に案件を切り替えたら、新しい前提メモを読み込み直す
   return true;
 }
 $("btnCaseRefresh").onclick=()=>fetchCases(false);
+/* ---- ver1.42 前提メモの読み直し（読み込む・開始・画面復帰） ---- */
+function caseDate(c){                                        // F列の更新日を短く
+  if(!c)return "";
+  let v=c.updated||c.updatedAt||c.updateDate||c.update||c["更新日"]||c.date||"";
+  if(!v){const k=Object.keys(c).find(k=>/updat|更新|modif/i.test(k));if(k)v=c[k]}   // GASの項目名が違っても拾う
+  const t=String(v||"").trim();
+  if(/^\d{4}-\d{2}-\d{2}T/.test(t)){const d=new Date(t);if(!isNaN(d))return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+  return t.slice(0,16);
+}
+function curCaseKey(){return $("topCase").value||$("caseSel").value||""}
+function memoUpdatedToast(c){const d=caseDate(c);toast(`前提メモを最新にしました（更新日 ${d||"不明"}）`)}
+function memoFailToast(timeout,throttle){
+  if(throttle&&Date.now()-memoFailToastAt<300000)return;
+  memoFailToastAt=Date.now();
+  toast(timeout?"前提メモの読み直しが間に合いませんでした。今の前提メモで続けます":"前提メモを読み直せませんでした。今の前提メモのまま使います");
+}
+// 案件マスタを読み直し、選んでいる案件の前提メモが変わっていれば入れ替える。会議中は入れ替えない
+async function syncCaseMemo(how,opt){
+  opt=opt||{};
+  if(opt.bg&&(running||starting))return "running";
+  let w=fetchCases(true);
+  if(opt.timeout)w=Promise.race([w,new Promise(r=>setTimeout(()=>r("timeout"),opt.timeout))]);
+  const ok=await w;
+  memoCheckAt=Date.now();
+  if(ok!==true){memoFailToast(ok==="timeout",!!opt.bg);logd("memo sync fail",how,String(ok));return "fail"}
+  if(running||(opt.bg&&starting))return "running";           // 読み直している間に会議が始まったら差し替えない
+  const key=curCaseKey();if(!key)return "nocase";
+  const c=caseList.find(x=>x.key===key);if(!c)return "nocase";
+  if((c.memo||"")===$("memo").value&&(c.keyterms||"")===$("keyterms").value)return "same";
+  if($("memo").value!==loadedMemo){                           // 手で書き換えた前提メモは黙って消さない（「読み込む」は別処理）
+    logd("memo sync skip(local edit)",how);toast("手で書き換えた前提メモがあるため、最新に差し替えていません");return "local";
+  }
+  const wasAuto=$("topCase").classList.contains("auto");
+  applyCase(c,"最新に更新");$("topCase").classList.toggle("auto",wasAuto);
+  const d=caseDate(c);$("caseHint").textContent=`読み込み済み：${c.name||c.key}（${how}で最新に更新${d?"・更新日 "+d:""}）`;
+  memoUpdatedToast(c);logd("memo sync",how,c.key,d);
+  return "updated";
+}
 /* ---- ver1.31 通話モード ---- */
 const CALL_WARN=/注意|言ってはいけない|答え方|金額|数字/;
 const CALL_ASK=/確認|聞く|質問|電話|会議/;
@@ -559,8 +604,16 @@ $("btnCallOpen").onclick=()=>{const d=[...document.querySelectorAll("#callSheet 
 $("btnMinDl").onclick=()=>{minutesText=$("minText").value.trim();downloadMinutes()};
 $("btnCaseLoad").onclick=async()=>{
   const key=$("caseSel").value;if(!key){toast("案件を選んでください");return}
-  const c=caseList.find(x=>x.key===key);
-  if(applyCase(c,"手動"))toast("前提メモを読み込みました");
+  const old=caseList.find(x=>x.key===key),oldMemo=old?(old.memo||""):null;
+  $("btnCaseLoad").disabled=true;
+  let ok=false;try{ok=await fetchCases(true)}finally{$("btnCaseLoad").disabled=false}   // ver1.42 先に案件マスタを読み直す
+  memoCheckAt=Date.now();
+  if($("caseSel").value!==key&&caseList.some(x=>x.key===key))$("caseSel").value=key;
+  const c=caseList.find(x=>x.key===key)||old;
+  if(!applyCase(c,"手動")){toast("案件が見つかりません");return}
+  if(ok!==true)memoFailToast(false,false);
+  else if(oldMemo!==null&&(c.memo||"")!==oldMemo)memoUpdatedToast(c);
+  else toast("前提メモを読み込みました");
 };
 $("btnCaseSave").onclick=async()=>{
   const memo=$("memo").value.trim();
@@ -789,8 +842,13 @@ function restoreSession(){
 }
 
 /* ================= 開始・停止 ================= */
-async function start(){
+async function start(){                                     // ver1.42 開始の準備中は画面復帰の読み直しで差し替えない
+  starting=true;try{return await start0()}finally{starting=false}
+}
+async function start0(){
+  const syncP=syncCaseMemo("開始",{timeout:3500});           // ver1.42 開始時に前提メモを読み直す（自動選択と並行）
   await autoPickCase();
+  await syncP;
   const sttKeyOk=cfg.stt==="openai"?!!cfg.oaKey:!!cfg.dgKey;
   if(!sttKeyOk||!cfg.aKey){toast("設定でAPIキーを入れてください");$("sheet").classList.add("open");return}
   let resume=false;
@@ -1698,6 +1756,7 @@ $("btnMin").onclick=async()=>{
 };
 
 restoreSession();
+loadedMemo=$("memo").value;                                  // ver1.42 手で書き換えたかの判定用
 fetchCases(true);                                            // ver1.31 起動時に案件マスタを黙って読み込む
 
 /* ================= PWA ================= */
@@ -1724,6 +1783,12 @@ $("btnInstall").onclick=async()=>{                           // ver1.31 対応�
   alert(msg);
 };
 document.addEventListener("visibilitychange",async()=>{if(document.visibilityState==="visible"&&running){try{wakeLock=await navigator.wakeLock?.request("screen")}catch(_){}}});
+document.addEventListener("visibilitychange",()=>{           // ver1.42 画面に戻ったら、会議中でなければ裏で前提メモを読み直す
+  if(document.visibilityState!=="visible"||running||starting)return;
+  if(Date.now()-memoCheckAt<15000)return;
+  if(!curCaseKey()){fetchCases(true);return}
+  syncCaseMemo("画面復帰",{bg:true});
+});
 </script>
 </body>
 </html>
